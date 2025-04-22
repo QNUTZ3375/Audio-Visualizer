@@ -54,7 +54,9 @@ void HSBtoRGB(int h, float s, float b, struct RGBColor& target){
     if(h >= 120 && h < 180) primes = {0, c, x}; 
     if(h >= 180 && h < 240) primes = {0, x, c}; 
     if(h >= 240 && h < 300) primes = {x, 0, c}; 
-    if(h >= 300 && h < 360) primes = {c, 0, x}; 
+    if(h >= 300 && h < 360) primes = {c, 0, x};
+
+    target = {primes.r + m, primes.g + m, primes.b + m };
 }
 
 int main(){
@@ -115,7 +117,7 @@ int main(){
         glm::mat4 proj = glm::ortho(0.0f, WINDOW_WIDTH, 0.0f, WINDOW_HEIGHT, -1.0f, 1.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 
-        Shader shader("./res/shaders/shader.shader");
+        Shader shader("./res/shaders/shader.glsl");
         shader.Bind();
     
         va.Unbind();
