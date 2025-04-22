@@ -1,6 +1,6 @@
 dir = src/
 outputfilename = Application
-inputfilenames = $(wildcard $(dir)*.cpp) $(wildcard $(dir)*.c) $(dir)vendor/stb_image/stb_image.cpp $(wildcard $(dir)vendor/imgui/*.cpp)  $(wildcard $(dir)tests/*.cpp)
+inputfilenames = $(wildcard $(dir)*.cpp) $(wildcard $(dir)*.c) $(dir)vendor/stb_image/stb_image.cpp $(wildcard $(dir)vendor/imgui/*.cpp)  $(wildcard $(dir)tests/*.cpp) $(dir)vendor/miniaudio/miniaudio.c
 frameworks = -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework CoreFoundation
 
 run: compile

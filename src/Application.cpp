@@ -6,6 +6,7 @@
 #include <string>
 #include <sstream>
 #include <cmath>
+#include <deque>
 
 #include "ErrorHandler.h"
 #include "Renderer.h"
@@ -14,23 +15,30 @@
 #include "VertexArray.h"
 #include "Shader.h"
 #include "ImgTexture.h"
-#include "Line.h"
+#include "SampleLine.h"
 
 #include "vendor/glm/glm.hpp"
 #include "vendor/glm/gtc/matrix_transform.hpp"
 #include "vendor/imgui/imgui.h"
 #include "vendor/imgui/imgui_impl_glfw.h"
 #include "vendor/imgui/imgui_impl_opengl3.h"
+#include "vendor/miniaudio/miniaudio.h"
 
 #define WINDOW_WIDTH 960.0f
 #define WINDOW_HEIGHT 540.0f
-#define NUM_RECTS 220
+#define NUM_SAMPLES 216
 //4 points, 3 values each (xyz)
 #define NUM_VERTEX_POINTS (4*3)
 //2 triangles, 3 indices each
 #define NUM_INDEX_POINTS (2*3)
 //4 color components (rgba)
 #define NUM_COLOR_POINTS 4
+#define SAMPLE_WIDTH 2
+#define SAMPLE_MARGIN 1
+#define MAX_AMPLITUDE_HEIGHT 150
+
+void processInput(GLFWwindow *window);
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
 struct RGBColor{
     float r;
@@ -59,6 +67,37 @@ void HSBtoRGB(int h, float s, float b, struct RGBColor& target){
     target = {primes.r + m, primes.g + m, primes.b + m };
 }
 
+void rotateDeque(std::deque<SampleLine>& deque, int& iterator, double* trigTable, float* positions, unsigned int* indices){
+
+    //remove front element
+    deque.pop_front();
+    //update all indices and shift left
+    for(int i = 0; i < deque.size(); i++){
+        deque.at(i).changeID(deque.at(i).getID() - 1);
+        deque.at(i).changeIndicesPosition(deque.at(i).getID());
+        deque.at(i).changeXPos(-1*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN));
+    }
+
+    //generate new SampleLine
+    struct RGBColor color = {0, 0, 0};
+    iterator %= 360;
+    HSBtoRGB(2*iterator, 1, 1, color);
+    deque.push_back(SampleLine(deque.size(), 
+                                45 + deque.size()*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), 
+                                WINDOW_HEIGHT/2, 
+                                2 + MAX_AMPLITUDE_HEIGHT * trigTable[(5*iterator)%360], 
+                                SAMPLE_WIDTH,
+                                color.r, color.g, color.b));
+    //increment iterator after creating sample
+    iterator = (iterator + 1);
+
+    //update position and indices array
+    for(int i = 0; i < deque.size(); i++){
+        deque.at(i).fillVertices(positions, (NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS)*i);
+        deque.at(i).fillIndices(indices, NUM_INDEX_POINTS*i);
+    }
+}
+
 int main(){
     //intialize glfw and configure
     if(!glfwInit()) return -1;
@@ -77,6 +116,7 @@ int main(){
         return -1;
     }
     glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
     glfwSwapInterval(1);
 
@@ -86,34 +126,53 @@ int main(){
         return -1;
     }
 
+    double sinTable[360] = {};
+    for(int i = 0; i < 360; i++){
+        sinTable[i] = sin(i * M_PI/180);
+    }
+    double cosTable[360] = {};
+    for(int i = 0; i < 360; i++){
+        cosTable[i] = cos(i * M_PI/180);
+    }
+    double tanTable[360] = {};
+    for(int i = 0; i < 360; i++){
+        tanTable[i] = tan(i * M_PI/180);
+    }
+    //IMPORTANT: sets the function for drawing heights
+    double* funcTable = sinTable;
     {
-        Line lines[NUM_RECTS];
-        float positions[(NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS)*NUM_RECTS];
+        std::deque<SampleLine> lineDeque;
+        float positions[(NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS)*NUM_SAMPLES];
         VertexBufferLayout layout;
-        unsigned int indices[NUM_INDEX_POINTS*NUM_RECTS];
+        unsigned int indices[NUM_INDEX_POINTS*NUM_SAMPLES];
 
         struct RGBColor color = {0, 0, 0};
+        int iterator = 0;
 
-        for(int i = 0; i < NUM_RECTS; i++){
-            HSBtoRGB(i, 1, 1, color);
-            lines[i] = Line(i, 45 + i*4, WINDOW_HEIGHT/2, 2 + 100 * sin(i * 180/(500*M_PI)), 2,
-                            color.r, color.g, color.b);
-            lines[i].fillVertices(positions, (NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS)*i);
-            lines[i].fillIndices(indices, NUM_INDEX_POINTS*i);
+        for(iterator = 0; iterator < NUM_SAMPLES; iterator++){
+            HSBtoRGB(2*iterator, 1, 1, color);
+            lineDeque.push_back(SampleLine(iterator, 
+                                            45 + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), 
+                                            WINDOW_HEIGHT/2, 
+                                            2 + MAX_AMPLITUDE_HEIGHT * funcTable[(5*iterator)%360], 
+                                            SAMPLE_WIDTH,
+                                            color.r, color.g, color.b));
+            lineDeque.back().fillVertices(positions, (NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS)*iterator);
+            lineDeque.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
         }
 
         GLCall(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
         GLCall(glEnable(GL_BLEND));
     
         VertexArray va;
-        VertexBuffer vb(positions, (NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS) * NUM_RECTS * sizeof(float));
+        VertexBuffer vb(positions, (NUM_VERTEX_POINTS + 4*NUM_COLOR_POINTS) * NUM_SAMPLES * sizeof(float));
         //vertex position coords
         layout.Push<float>(3);
         //color coords
         layout.Push<float>(4);
         va.AddBuffer(vb, layout);
     
-        IndexBuffer ib(indices, NUM_INDEX_POINTS*NUM_RECTS);
+        IndexBuffer ib(indices, NUM_INDEX_POINTS*NUM_SAMPLES);
         glm::mat4 proj = glm::ortho(0.0f, WINDOW_WIDTH, 0.0f, WINDOW_HEIGHT, -1.0f, 1.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 
@@ -138,13 +197,24 @@ int main(){
 
         glm::vec3 translation(0.0f, 0.0f, 0);
 
+        vb.Bind();
+        ib.Bind();
+        GLCall(float* pos = (float*) glMapBuffer(GL_ARRAY_BUFFER, GL_READ_WRITE));
+        GLCall(unsigned int* ind = (unsigned int*) glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_READ_WRITE));
+        vb.Unbind();
+        ib.Unbind();
         while(!glfwWindowShouldClose(window)){
+            processInput(window);
+
             renderer.Clear();
 
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             {
+                if(glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS){
+                    rotateDeque(lineDeque, iterator, funcTable, pos, ind);
+                }
                 // model handles the objects view
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), translation);
                 // all three are multiplied together (in reverse order due to column ordered matrices)
@@ -173,6 +243,15 @@ int main(){
     return 0;
 }
 
+void processInput(GLFWwindow *window){
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+}
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height){
+    glViewport(0, 0, width, height);
+}
+
 
 /*
     1. pick file
@@ -180,11 +259,13 @@ int main(){
     3. vizualise using opengl
 */
 
-//change implementation to from storing an array of Lines to a queue of Rects
-
 /*
 Notes:
-Monday 21 April 2025: Started this project, got a sin wave of rectangles implemented
-Tuesday 22 April 2025: Added colors to the rectangles
+Monday 21 April 2025: 
+    - Started this project
+    - Got a sin wave of rectangles implemented
+Tuesday 22 April 2025: 
+    - Added colors to the rectangles
+    - Added the ability to shift graph to the left
 
 */
