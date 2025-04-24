@@ -2,8 +2,33 @@
 
 #include <iostream>
 
-SampleLine::SampleLine(){
-    
+SampleLine::SampleLine(unsigned int id, float basex, float basey, float heightLeft, float heightRight, float width, float r, float g, float b){
+    m_ID = id;
+
+    m_Coords[0] = basex;
+    m_Coords[1] = basey - heightRight;
+    m_Coords[2] = 1.0f;
+    m_Coords[3] = basex + width;
+    m_Coords[4] = basey - heightRight;
+    m_Coords[5] = 1.0f;
+    m_Coords[6] = basex + width;
+    m_Coords[7] = basey + heightLeft;
+    m_Coords[8] = 1.0f;
+    m_Coords[9] = basex;
+    m_Coords[10] = basey + heightLeft;
+    m_Coords[11] = 1.0f;
+
+    m_Colors[0] = r;
+    m_Colors[1] = g;
+    m_Colors[2] = b;
+    m_Colors[3] = 1.0f;
+
+    m_Indices[0] = 0 + id*4;
+    m_Indices[1] = 1 + id*4;
+    m_Indices[2] = 2 + id*4;
+    m_Indices[3] = 2 + id*4;
+    m_Indices[4] = 3 + id*4;
+    m_Indices[5] = 0 + id*4;
 }
 
 SampleLine::SampleLine(unsigned int id, float basex, float basey, float height, float width, float r, float g, float b){
@@ -80,12 +105,12 @@ const void SampleLine::changeYPos(float distance){
     m_Coords[10] += distance;
 }
 
-const void SampleLine::changeWidth(float difference){
-    m_Coords[3] += difference;
-    m_Coords[6] += difference;
+const void SampleLine::changeWidth(float newWidth){
+    m_Coords[3] = m_Coords[0] + newWidth;
+    m_Coords[6] = m_Coords[0] + newWidth;
 }
 
-const void SampleLine::changeHeight(float difference){
-    m_Coords[7] += difference;
-    m_Coords[10] += difference;
+const void SampleLine::changeHeight(float newHeight){
+    m_Coords[7] = m_Coords[1] + newHeight;
+    m_Coords[10] = m_Coords[1] + newHeight;
 }

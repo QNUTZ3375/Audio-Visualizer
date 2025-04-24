@@ -1,3 +1,5 @@
 Application
 Application.dSYM
 .vscode
+*.wav
+.DS_Store

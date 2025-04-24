@@ -8,7 +8,7 @@ class SampleLine{
         unsigned int m_Indices[6];
 
     public:
-        SampleLine();
+        SampleLine(unsigned int id, float basex, float basey, float heightLeft, float heightRight, float width, float r, float g, float b);
         SampleLine(unsigned int id, float basex, float basey, float height, float width, float r, float g, float b);
         ~SampleLine();
         const void fillVertices(float* target, int offset);
@@ -16,11 +16,12 @@ class SampleLine{
         const void changeID(unsigned int id);
         const void changeXPos(float distance);
         const void changeYPos(float distance);
-        const void changeHeight(float difference);
-        const void changeWidth(float difference);
+        const void changeHeight(float newHeight);
+        const void changeWidth(float newWidth);
         const void changeIndicesPosition(unsigned int id);
 
         inline const unsigned int getID(){ return m_ID; }
+        inline const float getWidth(){ return m_Coords[0] - m_Coords[3]; }
         inline const float* getCoords(){ return m_Coords; }
         inline const float* getColors(){ return m_Colors; }
         inline const unsigned int* getIndices(){ return m_Indices; }
