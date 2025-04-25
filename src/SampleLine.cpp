@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-SampleLine::SampleLine(unsigned int id, float basex, float basey, float heightLeft, float heightRight, float width, float r, float g, float b){
+SampleLine::SampleLine(unsigned int id, float basex, float basey, float heightLeft, float heightRight, float width, float r, float g, float b, float a){
     m_ID = id;
 
     m_Coords[0] = basex;
@@ -21,7 +21,7 @@ SampleLine::SampleLine(unsigned int id, float basex, float basey, float heightLe
     m_Colors[0] = r;
     m_Colors[1] = g;
     m_Colors[2] = b;
-    m_Colors[3] = 1.0f;
+    m_Colors[3] = a;
 
     m_Indices[0] = 0 + id*4;
     m_Indices[1] = 1 + id*4;
@@ -31,7 +31,7 @@ SampleLine::SampleLine(unsigned int id, float basex, float basey, float heightLe
     m_Indices[5] = 0 + id*4;
 }
 
-SampleLine::SampleLine(unsigned int id, float basex, float basey, float height, float width, float r, float g, float b){
+SampleLine::SampleLine(unsigned int id, float basex, float basey, float height, float width, float r, float g, float b, float a){
     m_ID = id;
 
     m_Coords[0] = basex;
@@ -50,7 +50,7 @@ SampleLine::SampleLine(unsigned int id, float basex, float basey, float height, 
     m_Colors[0] = r;
     m_Colors[1] = g;
     m_Colors[2] = b;
-    m_Colors[3] = 1.0f;
+    m_Colors[3] = a;
 
     m_Indices[0] = 0 + id*4;
     m_Indices[1] = 1 + id*4;
@@ -62,6 +62,13 @@ SampleLine::SampleLine(unsigned int id, float basex, float basey, float height, 
 
 SampleLine::~SampleLine(){
 
+}
+
+void SampleLine::changeColor(float r, float g, float b, float a){
+    m_Colors[0] = r;
+    m_Colors[1] = g;
+    m_Colors[2] = b;
+    m_Colors[3] = a;
 }
 
 const void SampleLine::fillVertices(float* target, int offset){
@@ -78,7 +85,7 @@ const void SampleLine::fillIndices(unsigned int* target, int offset){
     std::memcpy(target + offset, m_Indices, 6 * sizeof(unsigned int));
 }
 
-const void SampleLine::changeIndicesPosition(unsigned int id){
+void SampleLine::changeIndicesPosition(unsigned int id){
     m_Indices[0] = 0 + id*4;
     m_Indices[1] = 1 + id*4;
     m_Indices[2] = 2 + id*4;
@@ -87,30 +94,30 @@ const void SampleLine::changeIndicesPosition(unsigned int id){
     m_Indices[5] = 0 + id*4;
 }
 
-const void SampleLine::changeID(unsigned int id){
+void SampleLine::changeID(unsigned int id){
     m_ID = id;
 }
 
-const void SampleLine::changeXPos(float distance){
+void SampleLine::changeXPos(float distance){
     m_Coords[0] += distance;
     m_Coords[3] += distance;
     m_Coords[6] += distance;
     m_Coords[9] += distance;
 }
 
-const void SampleLine::changeYPos(float distance){
+void SampleLine::changeYPos(float distance){
     m_Coords[1] += distance;
     m_Coords[4] += distance;
     m_Coords[7] += distance;
     m_Coords[10] += distance;
 }
 
-const void SampleLine::changeWidth(float newWidth){
+void SampleLine::changeWidth(float newWidth){
     m_Coords[3] = m_Coords[0] + newWidth;
     m_Coords[6] = m_Coords[0] + newWidth;
 }
 
-const void SampleLine::changeHeight(float newHeight){
+void SampleLine::changeHeight(float newHeight){
     m_Coords[7] = m_Coords[1] + newHeight;
     m_Coords[10] = m_Coords[1] + newHeight;
 }
