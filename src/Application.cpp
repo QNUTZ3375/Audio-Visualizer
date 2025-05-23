@@ -19,7 +19,8 @@
 #include "vendor/imgui/imgui.h"
 #include "vendor/imgui/imgui_impl_glfw.h"
 #include "vendor/imgui/imgui_impl_opengl3.h"
-
+#include "vendor/portable-file-dialogs/portable-file-dialogs.h"
+ 
 #define WINDOW_WIDTH 960.0f
 #define WINDOW_HEIGHT 720.0f
 //216 regular amplitude samples
@@ -128,7 +129,7 @@ int main(){
 #endif
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     //initialize window
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "New Window", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Audio Visualizer", nullptr, nullptr);
     if(!window){
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -250,11 +251,24 @@ int main(){
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
         glm::vec3 translation(0.0f, 0.0f, 0);
 
+        std::string home_dir;
+        #ifdef _WIN32
+        home_dir = std::getenv("USERPROFILE");
+        #else
+        home_dir = std::getenv("HOME");
+        #endif
+        std::vector<std::string> fpath = pfd::open_file("Select a File", ".", {"Audio Files", "*.wav"}).result();
+
+        if(fpath.size() < 1){
+            std::cout << "No File Selected" << std::endl;
+            return 0;
+        }
+
         ma_device device;
         ma_decoder decoder;
         //file_example_WAV_1MG
         //Moon_River_Audio_File
-        const char* filepath = "file_example_WAV_1MG.wav";
+        const char* filepath = fpath.at(0).c_str();
         TrackRingBuffer audioBuffer;
         createDevice(device, decoder, filepath, audioBuffer);
 
@@ -368,4 +382,15 @@ Friday 25 April 2025:
     - Abstracted object creation process, removed unnecessary includes
     - Change colour of decibel meter depending on level
     (-60db to -20db: green, -20db to -6db: yellow, -6db to 0db: red)
+Sunday 27 April 2025:
+    - Add file picker option
+
+Possible todo list:
+    - Add FFT function to create frequency spectrum
+    - Add the option to change graph size (height, width, number of bars, etc)
+
+Add fftw into the program, things to change:
+- replace rotate deque with update deque (make a new function)
+- make sure fftw compiles correctly first
+- 
 */
