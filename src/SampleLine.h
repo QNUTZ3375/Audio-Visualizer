@@ -20,10 +20,14 @@ class SampleLine{
         void changeHeight(float newHeight);
         void changeWidth(float newWidth);
         void changeIndicesPosition(unsigned int id);
+        void changeColors(float newR, float newG, float newB, float newA);
 
         inline const unsigned int getID(){ return m_ID; }
         inline const float getWidth(){ return m_Coords[0] - m_Coords[3]; }
         inline const float* getCoords(){ return m_Coords; }
         inline const float* getColors(){ return m_Colors; }
         inline const unsigned int* getIndices(){ return m_Indices; }
+        inline const float getHeight(){ return m_Coords[7] - m_Coords[1]; }
+        inline const float getBaseX(){ return m_Coords[0]; }
+        inline const float getBaseY(){ return m_Coords[1]; }
 };

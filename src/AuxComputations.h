@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+#include <fftw3-mpi.h>
 #include "AudioPlayer.h"
 
 namespace AuxComputations{
@@ -8,12 +10,14 @@ namespace AuxComputations{
         float g;
         float b;
     } RGBColor;
+
+    void fillArrayWithSamples(RingBuffer<float>& ringBuffer, std::vector<float>& outArray, size_t amtOfSamples);
     
     void HSBtoRGB(int h, float s, float b, AuxComputations::RGBColor& target);
     
-    void computeRMSValueStereo(RingBuffer<float>& ringBuffer, size_t amtOfSamples, float& leftVal, float& rightVal);
+    void computeRMSValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal);
     
-    void computePeakValueStereo(RingBuffer<float>& ringBuffer, size_t amtOfSamples, float& leftVal, float& rightVal);
+    void computePeakValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal);
     
     void computeDecibelLevels(float leftRMS, float rightRMS, float& leftDB, float& rightDB);
 

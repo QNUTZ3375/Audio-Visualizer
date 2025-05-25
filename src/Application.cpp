@@ -1,9 +1,12 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <fftw3.h>
 
 #include <iostream>
 #include <cmath>
 #include <deque>
+#include <vector>
+#include <algorithm>
 
 #include "ErrorHandler.h"
 #include "Renderer.h"
@@ -21,10 +24,14 @@
 #include "vendor/imgui/imgui_impl_opengl3.h"
 #include "vendor/portable-file-dialogs/portable-file-dialogs.h"
  
-#define WINDOW_WIDTH 960.0f
+#define WINDOW_WIDTH 1080.0f
 #define WINDOW_HEIGHT 720.0f
-//216 regular amplitude samples
-#define NUM_GRAPH_SAMPLES 216
+#define SAMPLE_WIDTH 2
+#define SAMPLE_MARGIN 1
+#define NUM_FFT_SAMPLES 1024
+//256 regular amplitude samples
+#define NUM_GRAPH_SAMPLES 256
+#define WINDOW_MARGIN (((int)WINDOW_WIDTH - NUM_GRAPH_SAMPLES*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN)) / 2)
 //3 values (xyz)
 #define NUM_POSITION_POINTS 3
 //2 triangles, 3 indices each
@@ -33,11 +40,12 @@
 #define NUM_COLOR_POINTS 4
 //4 position points, 4 color points, 1 SampleLine object
 #define NUM_TOTAL_VERTEX_POINTS (4*NUM_POSITION_POINTS + 4*NUM_COLOR_POINTS)
-#define SAMPLE_WIDTH 2
-#define SAMPLE_MARGIN 1
 #define MAX_AMPLITUDE_HEIGHT 200
 #define AUDIO_SAMPLE_RATE 48000
 #define DECIBEL_METER_MAX_LENGTH 400
+#define MIN_FREQ 20.0f
+#define MAX_FREQ 24000.0f
+#define BIN_WIDTH_FREQ (((float) AUDIO_SAMPLE_RATE) / NUM_FFT_SAMPLES)
 
 void processInput(GLFWwindow *window){
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -48,43 +56,129 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
 }
 
-void generateGraph(std::deque<SampleLine>& deque, float* positions, unsigned int* indices, double* funcTable, int& iterator){
+void generateCustomBins(float* freqTable){
+    int currentFreq = 0;
+    float hertzPartitions[] = {MIN_FREQ, 60, 200, 1000, 2000, MAX_FREQ}; //divides into important frequency ranges
+    int binPartitions[] = {1, 48, 100, 64, 43}; //Adds to NUM_GRAPH_SAMPLES (256)
+
+    for(int part_c = 0; part_c < 5; part_c++){
+        float hertzPerBin = (hertzPartitions[part_c+1] - hertzPartitions[part_c]) / binPartitions[part_c];
+        for(int i = 0; i < binPartitions[part_c]; i++){
+            freqTable[currentFreq] = hertzPartitions[part_c] + i * (hertzPerBin);
+            currentFreq++;
+        }
+    }
+    freqTable[NUM_GRAPH_SAMPLES] = MAX_FREQ;
+}
+
+void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
     AuxComputations::RGBColor color = {0, 0, 0};
     for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGB(2*iterator, 1, 1, color);
-        deque.push_back(SampleLine(iterator, 45 + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
+        HSBtoRGB(iterator, 0.6, 0.7, color);
+        graphArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
                                         4 + MAX_AMPLITUDE_HEIGHT * funcTable[(5*iterator)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, 1.0f));
-        deque.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
-        deque.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
+        graphArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
+        graphArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
     }
 }
 
-void rotateDeque(std::deque<SampleLine>& deque, int& iterator, double* trigTable, float* positions, unsigned int* indices, float leftSample, float rightSample){
-    SampleLine toDelete = deque.at(0);
-    //remove front element
-    deque.pop_front();
-    //update all indices and shift left
-    for(int i = 0; i < deque.size(); i++){
-        deque.at(i).changeID(deque.at(i).getID() - 1);
-        deque.at(i).changeIndicesPosition(deque.at(i).getID());
-        deque.at(i).changeXPos(-1*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN));
+void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
+    AuxComputations::RGBColor color = {0, 0, 0};
+    for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
+        HSBtoRGB(1.45*iterator, 1, 1, color);
+        freqArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
+                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(5*iterator)%360], SAMPLE_WIDTH,
+                                        color.r, color.g, color.b, 0.9f));
+        freqArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
+        freqArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
+    }
+}
+
+void shiftGraphLeft(std::vector<SampleLine>& graphArr, int& iterator, float* positions, unsigned int* indices, float leftSample, float rightSample){
+    //update all graph bars and shift left
+    for(int i = 0; i < NUM_GRAPH_SAMPLES - 1; i++){
+        const float* newColors = graphArr[i+1].getColors();
+        graphArr[i].changeColor(newColors[0], newColors[1], newColors[2], newColors[3]);
+        const float newHeight = graphArr[i+1].getHeight();
+        graphArr[i].changeHeight(newHeight);
+        const float newBaseY = graphArr[i+1].getBaseY();
+        graphArr[i].changeYPos(newBaseY);
     }
 
-    //generate new SampleLine
+    //update last element
     AuxComputations::RGBColor color = {0, 0, 0};
     iterator %= 360;
-    AuxComputations::HSBtoRGB(2*iterator, 1, 1, color);
-    deque.push_back(SampleLine(deque.size(), 45 + deque.size()*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
-                                2 + MAX_AMPLITUDE_HEIGHT * leftSample, 2 + MAX_AMPLITUDE_HEIGHT * rightSample, SAMPLE_WIDTH,
-                                color.r, color.g, color.b, 1.0f));
+    AuxComputations::HSBtoRGB(iterator, 0.6, 0.7, color);
+    graphArr.back().changeColor(color.r, color.g, color.b, 1.0f);
+    graphArr.back().changeYPos(WINDOW_HEIGHT/2 - (2 + MAX_AMPLITUDE_HEIGHT * rightSample));
+    graphArr.back().changeHeight(2 + MAX_AMPLITUDE_HEIGHT * rightSample + 2 + MAX_AMPLITUDE_HEIGHT * leftSample);
+
     //increment iterator after creating sample
     iterator = (iterator + 1);
+    //update position array
+    for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
+        graphArr.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
+    }
+}
 
-    //update position and indices array
-    for(int i = 0; i < deque.size(); i++){
-        deque.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
-        deque.at(i).fillIndices(indices, NUM_INDEX_POINTS*i);
+void updateFreqValues(std::vector<SampleLine>& freqGraphArr, int& iterator, float* positions, unsigned int* indices, fftw_complex* leftSamples, fftw_complex* rightSamples, float* freqSeparationTable){
+    for(int visBin = 0; visBin < NUM_GRAPH_SAMPLES; visBin++){
+        float startFreq = freqSeparationTable[visBin];
+        float endFreq = freqSeparationTable[visBin+1];
+        //compute starting and ending position of bins
+        int startBin = (int)(startFreq / BIN_WIDTH_FREQ);
+        int endBin = (int)(endFreq / BIN_WIDTH_FREQ);
+
+        if (endBin <= startBin)
+        endBin = startBin + 1;
+
+        if (endBin > NUM_FFT_SAMPLES / 2){
+            endBin = NUM_FFT_SAMPLES / 2;
+            startBin = endBin - 1;
+        }
+
+        //compute magnitudes of both left and right channels within the given frequency range
+        float leftSum = 0.0f;
+        float rightSum = 0.0f;
+        float re, im;
+        for (int i = startBin; i < endBin && i < (NUM_FFT_SAMPLES/2 + 1); i++) {
+            re = leftSamples[i][0];
+            im = leftSamples[i][1];
+            leftSum += sqrtf(re * re + im * im);
+
+            re = rightSamples[i][0];
+            im = rightSamples[i][1];
+            rightSum += sqrtf(re * re + im * im);
+        }
+        int gain = 25;
+        //compute overall height of left and right sample
+        float leftHeight = (leftSum / (endBin - startBin + 1)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
+        float rightHeight = (rightSum / (endBin - startBin + 1)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
+
+        if(std::isinf(leftHeight)){
+            std::cout << leftSum << " E " << std::endl;
+            std::cout << endBin << " " << startBin << std::endl;
+            std::cout << "L" << std::endl;
+        }
+        if(std::isinf(rightHeight)) std::cout << "R" << std::endl;
+
+        //set default value to 0 if value is invalid
+        if(std::isnan(leftHeight) || std::isinf(leftHeight) || leftHeight < 0) leftHeight = 0;
+        if(std::isnan(rightHeight) || std::isinf(rightHeight) || rightHeight < 0) rightHeight = 0;
+
+        float prevRightHeight = abs(WINDOW_HEIGHT/2 - freqGraphArr[visBin].getBaseY());
+        float prevLeftHeight = freqGraphArr[visBin].getHeight() - (WINDOW_HEIGHT/2 - freqGraphArr[visBin].getBaseY());
+        //calculate smoothed values (exponential smoothing)
+        float newLeftHeight = AuxComputations::expSmooth(prevLeftHeight, leftHeight, 0.85f);
+        float newRightHeight = AuxComputations::expSmooth(prevRightHeight, rightHeight, 0.85f);
+
+        freqGraphArr[visBin].changeHeight(std::max(4.0f, newRightHeight + newLeftHeight));
+        freqGraphArr[visBin].changeYPos(WINDOW_HEIGHT/2 - std::max(2.0f, newRightHeight));
+    }
+    //update position array
+    for(int i = 0; i < freqGraphArr.size(); i++){
+        freqGraphArr.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
     }
 }
 
@@ -111,7 +205,8 @@ void adjustDecibelMeters(float* positions, unsigned int* indices, SampleLine& le
 }
 
 void addSeparatorLine(size_t offset, float* positions, unsigned int* indices){
-    SampleLine separator(offset, 45, WINDOW_HEIGHT/2 - 1, 2, WINDOW_WIDTH - 98, 0.5f, 0.5f, 0.5f, 1.0f);
+    SampleLine separator(offset, WINDOW_MARGIN, WINDOW_HEIGHT/2 - 1, 2, 
+        WINDOW_WIDTH - 2*WINDOW_MARGIN - SAMPLE_MARGIN, 0.5f, 0.5f, 0.5f, 1.0f);
 
     separator.fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*(offset));
     separator.fillIndices(indices, NUM_INDEX_POINTS*(offset));
@@ -171,11 +266,11 @@ int main(){
         layout.Push<float>(4);
 
         //start setting up main graph
-        std::deque<SampleLine> lineDeque;
+        std::vector<SampleLine> ampGraph;
         float positions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
         unsigned int indices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
         int iterator = 0;
-        generateGraph(lineDeque, positions, indices, funcTable, iterator);
+        generateGraph(ampGraph, positions, indices, funcTable, iterator);
         addSeparatorLine(NUM_GRAPH_SAMPLES, positions, indices);
 
         MappedDrawObj graphObj(positions, indices, 
@@ -187,8 +282,8 @@ int main(){
         float dbPositions[NUM_TOTAL_VERTEX_POINTS*6];
         unsigned int dbIndices[NUM_INDEX_POINTS*6];
         int dbIterator = 0;
-        float dbXPos = 45;
-        float dbYPos = 45;
+        float dbXPos = WINDOW_MARGIN;
+        float dbYPos = WINDOW_MARGIN;
 
         SampleLine blackOutline(dbIterator, dbXPos - 5, dbYPos - 5, 
             70, DECIBEL_METER_MAX_LENGTH + 10 + 10, 
@@ -235,6 +330,49 @@ int main(){
             NUM_TOTAL_VERTEX_POINTS*6, NUM_INDEX_POINTS*6, layout);
         //end setting up decibel meter
 
+        //start setting up frequency graph
+        std::vector<SampleLine> freqGraph;
+        float freqPositions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
+        unsigned int freqIndices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
+        int freqIterator = 0;
+        generateFreqGraph(freqGraph, freqPositions, freqIndices, funcTable, freqIterator);
+
+        MappedDrawObj freqGraphObj(freqPositions, freqIndices, 
+            NUM_TOTAL_VERTEX_POINTS * (NUM_GRAPH_SAMPLES + 1), 
+            NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1), layout);
+        
+        double* leftIn = (double*) fftw_malloc(NUM_FFT_SAMPLES * sizeof(double));
+        fftw_complex* leftOut = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (NUM_FFT_SAMPLES/2 + 1));
+        double* rightIn = (double*) fftw_malloc(NUM_FFT_SAMPLES * sizeof(double));
+        fftw_complex* rightOut = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (NUM_FFT_SAMPLES/2 + 1));
+        memset(leftIn, 0, NUM_FFT_SAMPLES);
+        memset(rightIn, 0, NUM_FFT_SAMPLES);
+        for(int i = 0; i < (NUM_FFT_SAMPLES/2 + 1); i++){
+            leftOut[i][0] = 0;
+            leftOut[i][1] = 0;
+            rightOut[i][0] = 0;
+            rightOut[i][1] = 0;
+        }
+
+        fftw_plan freqGraphPlanLeft = fftw_plan_dft_r2c_1d(NUM_FFT_SAMPLES, leftIn, leftOut, FFTW_ESTIMATE);
+        fftw_plan freqGraphPlanRight = fftw_plan_dft_r2c_1d(NUM_FFT_SAMPLES, rightIn, rightOut, FFTW_ESTIMATE);
+
+        float logFreqSpacingTable[NUM_GRAPH_SAMPLES+1] = {0};
+        float linearFreqSpacingTable[NUM_GRAPH_SAMPLES+1] = {0};
+        float customFreqSpacingTable[NUM_GRAPH_SAMPLES+1] = {0};
+
+        float logMinFreq = logf(MIN_FREQ);
+        float binSpacing = logf(MAX_FREQ / MIN_FREQ);
+        //precompute logarithmic spacing for frequency graph
+        for(int i = 0; i < NUM_GRAPH_SAMPLES+1; i++) {
+            logFreqSpacingTable[i] = expf(logMinFreq + (float)i / NUM_GRAPH_SAMPLES * binSpacing);
+        }
+        for(int i = 0; i < NUM_GRAPH_SAMPLES+1; i++){
+            linearFreqSpacingTable[i] = MIN_FREQ + (float)i/(NUM_GRAPH_SAMPLES+1) * (MAX_FREQ - MIN_FREQ);
+        }
+        generateCustomBins(customFreqSpacingTable);
+        //end setting up frequency graph
+
         Shader shader("./res/shaders/shader.glsl");
         Renderer renderer;
 
@@ -261,6 +399,12 @@ int main(){
 
         if(fpath.size() < 1){
             std::cout << "No File Selected" << std::endl;
+            fftw_free(leftIn);
+            fftw_free(leftOut);
+            fftw_free(rightIn);
+            fftw_free(rightOut);
+            fftw_destroy_plan(freqGraphPlanLeft);
+            fftw_destroy_plan(freqGraphPlanRight);
             return 0;
         }
 
@@ -299,10 +443,13 @@ int main(){
                     }
                     float leftSample = prevLeftSample;
                     float rightSample = prevRightSample;
-                    AuxComputations::computePeakValueStereo((*audioBuffer.ringBuffer), samplesPerDrawCall, leftSample, rightSample);
+                    std::vector<float> arraySamples(samplesPerDrawCall, 0.0f);
+
+                    AuxComputations::fillArrayWithSamples((*audioBuffer.ringBuffer), arraySamples, samplesPerDrawCall);
+                    AuxComputations::computePeakValueStereo(arraySamples, samplesPerDrawCall, leftSample, rightSample);
                     leftSample = AuxComputations::expSmooth(prevLeftSample, leftSample, 0.3f);
                     rightSample = AuxComputations::expSmooth(prevRightSample, rightSample, 0.3f);
-                    rotateDeque(lineDeque, iterator, funcTable, 
+                    shiftGraphLeft(ampGraph, iterator, 
                                 graphObj.mappedPositions, graphObj.mappedIndices, 
                                 leftSample, rightSample);
                     prevLeftSample = leftSample;
@@ -315,6 +462,20 @@ int main(){
                         leftDecibelMeter, rightDecibelMeter, prevLeftDB, prevRightDB, leftDB, rightDB);
                     prevLeftDB = leftDB;
                     prevRightDB = rightDB;
+
+                    memset(leftIn, 0, NUM_FFT_SAMPLES);
+                    memset(rightIn, 0, NUM_FFT_SAMPLES);
+                    int idx = 0;
+                    for(int i = 0; i < arraySamples.size(); i+=2){
+                        leftIn[idx] = (double) arraySamples[i];
+                        rightIn[idx] = (double) arraySamples[i+1];
+                        idx++;
+                    }
+                    fftw_execute(freqGraphPlanLeft);
+                    fftw_execute(freqGraphPlanRight);
+                    updateFreqValues(freqGraph, freqIterator, 
+                                freqGraphObj.mappedPositions, freqGraphObj.mappedIndices, 
+                                leftOut, rightOut, customFreqSpacingTable);
                 }
                 if(!hasPlayed && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){
                     startAudioCallback(device, decoder);
@@ -328,6 +489,7 @@ int main(){
                 shader.SetUniformMat4f("u_MVP", mvp);
                 renderer.Draw(graphObj.va, graphObj.ib, shader);
                 renderer.Draw(dbMeterObj.va, dbMeterObj.ib, shader);
+                renderer.Draw(freqGraphObj.va, freqGraphObj.ib, shader);
             }
 
             {
@@ -343,6 +505,12 @@ int main(){
         }
         // printRingBufferContents(*audioBuffer.ringBuffer);
         destroyDevice(device, decoder, audioBuffer);
+        fftw_free(leftIn);
+        fftw_free(leftOut);
+        fftw_free(rightIn);
+        fftw_free(rightOut);
+        fftw_destroy_plan(freqGraphPlanLeft);
+        fftw_destroy_plan(freqGraphPlanRight);
     }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -385,12 +553,10 @@ Friday 25 April 2025:
 Sunday 27 April 2025:
     - Add file picker option
 
-Possible todo list:
-    - Add FFT function to create frequency spectrum
-    - Add the option to change graph size (height, width, number of bars, etc)
-
-Add fftw into the program, things to change:
-- replace rotate deque with update deque (make a new function)
-- make sure fftw compiles correctly first
-- 
+Friday 23 May 2025:
+    - changed AuxComputations to accept an array of values instead of popping from the queue
+Saturday 24 May 2025:
+    - added frequency graph and FFT computations
+Sunday 25 May 2025:
+    - tweaked FFT settings to reduce errors
 */

@@ -98,18 +98,20 @@ void SampleLine::changeID(unsigned int id){
     m_ID = id;
 }
 
-void SampleLine::changeXPos(float distance){
-    m_Coords[0] += distance;
-    m_Coords[3] += distance;
-    m_Coords[6] += distance;
-    m_Coords[9] += distance;
+void SampleLine::changeXPos(float newBaseX){
+    const float width = getWidth();
+    m_Coords[0] = newBaseX;
+    m_Coords[3] = newBaseX + width;
+    m_Coords[6] = newBaseX + width;
+    m_Coords[9] = newBaseX;
 }
 
-void SampleLine::changeYPos(float distance){
-    m_Coords[1] += distance;
-    m_Coords[4] += distance;
-    m_Coords[7] += distance;
-    m_Coords[10] += distance;
+void SampleLine::changeYPos(float newBaseY){
+    const float height = getHeight();
+    m_Coords[1] = newBaseY;
+    m_Coords[4] = newBaseY;
+    m_Coords[7] = newBaseY + height;
+    m_Coords[10] = newBaseY + height;
 }
 
 void SampleLine::changeWidth(float newWidth){
@@ -120,4 +122,11 @@ void SampleLine::changeWidth(float newWidth){
 void SampleLine::changeHeight(float newHeight){
     m_Coords[7] = m_Coords[1] + newHeight;
     m_Coords[10] = m_Coords[1] + newHeight;
+}
+
+void SampleLine::changeColors(float newR, float newG, float newB, float newA){
+    m_Colors[0] = newR;
+    m_Colors[0] = newG;
+    m_Colors[0] = newB;
+    m_Colors[0] = newA;
 }

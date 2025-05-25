@@ -1,5 +1,13 @@
 #include "AuxComputations.h"
 
+void AuxComputations::fillArrayWithSamples(RingBuffer<float>& ringBuffer, std::vector<float>& outArray, size_t amtOfSamples){
+    for(int i = 0; i < amtOfSamples; i++){
+        if(!ringBuffer.pop(outArray[i])){
+            break;
+        }
+    }
+}
+
 void AuxComputations::HSBtoRGB(int h, float s, float b, AuxComputations::RGBColor& target){
     h = h % 360;
     if(s < 0) s = 0;
@@ -21,34 +29,34 @@ void AuxComputations::HSBtoRGB(int h, float s, float b, AuxComputations::RGBColo
     target = {primes.r + m, primes.g + m, primes.b + m };
 }
 
-void AuxComputations::computeRMSValueStereo(RingBuffer<float>& ringBuffer, size_t amtOfSamples, float& leftVal, float& rightVal){
+void AuxComputations::computeRMSValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal){
     float sumSquaresLeft = 0.0f;
     float sumSquaresRight = 0.0f;
 
     for(int i = 0; i < amtOfSamples; i+=2){
-        float currSampleLeft = 0.0f;
-        if(!ringBuffer.pop(currSampleLeft)) break;
+        if(std::isnan(arraySamples[i])) break;
+        float currSampleLeft = arraySamples[i];
         sumSquaresLeft += currSampleLeft * currSampleLeft;
 
-        float currSampleRight = 0.0f;
-        if(!ringBuffer.pop(currSampleRight)) break;
+        if(std::isnan(arraySamples[i+1])) break;
+        float currSampleRight = arraySamples[i+1];
         sumSquaresRight += currSampleRight * currSampleRight;
     }
     leftVal = sqrt(sumSquaresLeft / (float) amtOfSamples);
     rightVal = sqrt(sumSquaresRight / (float) amtOfSamples);
 }
 
-void AuxComputations::computePeakValueStereo(RingBuffer<float>& ringBuffer, size_t amtOfSamples, float& leftVal, float& rightVal){
+void AuxComputations::computePeakValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal){
     float maxLeft = 0.0f;
     float maxRight = 0.0f;
 
     for(int i = 0; i < amtOfSamples; i+=2){
-        float currSampleLeft = 0.0f;
-        if(!ringBuffer.pop(currSampleLeft)) break;
+        if(std::isnan(arraySamples[i])) break;
+        float currSampleLeft = arraySamples[i];
         if(maxLeft < currSampleLeft) maxLeft = currSampleLeft;
 
-        float currSampleRight = 0.0f;
-        if(!ringBuffer.pop(currSampleRight)) break;
+        if(std::isnan(arraySamples[i+1])) break;
+        float currSampleRight = arraySamples[i+1];
         if(maxRight < currSampleRight) maxRight = currSampleRight;
     }
     leftVal = maxLeft;
