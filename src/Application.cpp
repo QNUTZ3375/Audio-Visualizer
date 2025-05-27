@@ -6,7 +6,7 @@
 #include <cmath>
 #include <deque>
 #include <vector>
-#include <algorithm>
+#include <numeric>
 
 #include "ErrorHandler.h"
 #include "Renderer.h"
@@ -28,7 +28,7 @@
 #define WINDOW_HEIGHT 720.0f
 #define SAMPLE_WIDTH 2
 #define SAMPLE_MARGIN 1
-#define NUM_FFT_SAMPLES 1024
+#define NUM_FFT_SAMPLES 4096
 //256 regular amplitude samples
 #define NUM_GRAPH_SAMPLES 256
 #define WINDOW_MARGIN (((int)WINDOW_WIDTH - NUM_GRAPH_SAMPLES*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN)) / 2)
@@ -44,8 +44,13 @@
 #define AUDIO_SAMPLE_RATE 48000
 #define DECIBEL_METER_MAX_LENGTH 400
 #define MIN_FREQ 20.0f
-#define MAX_FREQ 24000.0f
-#define BIN_WIDTH_FREQ (((float) AUDIO_SAMPLE_RATE) / NUM_FFT_SAMPLES)
+//Nyquist frequency; can only determine up to half the sample rate frequency
+#define MAX_FREQ ((float) AUDIO_SAMPLE_RATE/2)
+#define BIN_WIDTH_FREQ_RANGE (((float) AUDIO_SAMPLE_RATE) / NUM_FFT_SAMPLES)
+#define NUM_HALVES 4
+#define SCALING_FACTOR (360/(((float)NUM_GRAPH_SAMPLES/NUM_HALVES) * 2))
+#define HERTZ_PARTITIONS_INIT {MIN_FREQ, 60, 200, 1000, 2000, MAX_FREQ} //divides into important frequency ranges
+#define BIN_PARTITIONS_INIT {1, 48, 100, 72, 35} //Adds to NUM_GRAPH_SAMPLES (256)
 
 void processInput(GLFWwindow *window){
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -58,10 +63,15 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height){
 
 void generateCustomBins(float* freqTable){
     int currentFreq = 0;
-    float hertzPartitions[] = {MIN_FREQ, 60, 200, 1000, 2000, MAX_FREQ}; //divides into important frequency ranges
-    int binPartitions[] = {1, 48, 100, 64, 43}; //Adds to NUM_GRAPH_SAMPLES (256)
+    std::vector<float> hertzPartitions = HERTZ_PARTITIONS_INIT;
+    std::vector<int> binPartitions = BIN_PARTITIONS_INIT;
 
-    for(int part_c = 0; part_c < 5; part_c++){
+    assert(hertzPartitions.size() == binPartitions.size() + 1 
+        && "Hertz partitions must be of size bin partitions + 1");
+    assert(std::accumulate(binPartitions.begin(), binPartitions.end(), 0) == NUM_GRAPH_SAMPLES 
+        && "Bin partitions must accumulate to the number of graph samples");
+
+    for(int part_c = 0; part_c < binPartitions.size(); part_c++){
         float hertzPerBin = (hertzPartitions[part_c+1] - hertzPartitions[part_c]) / binPartitions[part_c];
         for(int i = 0; i < binPartitions[part_c]; i++){
             freqTable[currentFreq] = hertzPartitions[part_c] + i * (hertzPerBin);
@@ -76,7 +86,7 @@ void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned
     for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
         HSBtoRGB(iterator, 0.6, 0.7, color);
         graphArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
-                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(5*iterator)%360], SAMPLE_WIDTH,
+                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, 1.0f));
         graphArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
         graphArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
@@ -86,9 +96,9 @@ void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned
 void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
     AuxComputations::RGBColor color = {0, 0, 0};
     for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGB(1.45*iterator, 1, 1, color);
+        HSBtoRGB((SCALING_FACTOR/(NUM_HALVES/2))*iterator, 1, 1, color);
         freqArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
-                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(5*iterator)%360], SAMPLE_WIDTH,
+                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, 0.9f));
         freqArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
         freqArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
@@ -127,54 +137,61 @@ void updateFreqValues(std::vector<SampleLine>& freqGraphArr, int& iterator, floa
         float startFreq = freqSeparationTable[visBin];
         float endFreq = freqSeparationTable[visBin+1];
         //compute starting and ending position of bins
-        int startBin = (int)(startFreq / BIN_WIDTH_FREQ);
-        int endBin = (int)(endFreq / BIN_WIDTH_FREQ);
+        int startBin = (int)(startFreq / BIN_WIDTH_FREQ_RANGE);
+        int endBin = (int)(endFreq / BIN_WIDTH_FREQ_RANGE);
 
-        if (endBin <= startBin)
-        endBin = startBin + 1;
+        if (endBin <= startBin){
+            endBin = startBin + 1;
+        }
 
         if (endBin > NUM_FFT_SAMPLES / 2){
             endBin = NUM_FFT_SAMPLES / 2;
             startBin = endBin - 1;
         }
 
+        float centerFreq = (startFreq + endFreq) / 2.0f;
+        //0.5f = tight central emphasis, 1.0f = default, 2.0f = less weight focus
+        float weightingFactor = 1.7f;
+        float sigma = (endFreq - startFreq) / 2.0f * weightingFactor;
+
+        float leftWeightedSum = 0.0f, rightWeightedSum = 0.0f;
+        float weightTotal = 0.0f;
+
         //compute magnitudes of both left and right channels within the given frequency range
-        float leftSum = 0.0f;
-        float rightSum = 0.0f;
         float re, im;
         for (int i = startBin; i < endBin && i < (NUM_FFT_SAMPLES/2 + 1); i++) {
-            re = leftSamples[i][0];
-            im = leftSamples[i][1];
-            leftSum += sqrtf(re * re + im * im);
+            float binFreq = i * BIN_WIDTH_FREQ_RANGE;
+            float dist = binFreq - centerFreq;
 
-            re = rightSamples[i][0];
-            im = rightSamples[i][1];
-            rightSum += sqrtf(re * re + im * im);
+            // Gaussian weighting, e^-0.5(((x-u)/s)^2), smaller sigma means stricter fall-off
+            float weight = expf(-0.5f * (dist * dist) / (sigma * sigma + 1e-6f));
+            re = leftSamples[i][0], im = leftSamples[i][1];
+            float leftMag = sqrtf(fmaxf(0.0f, re * re + im * im));
+
+            re = rightSamples[i][0], im = rightSamples[i][1];
+            float rightMag = sqrtf(fmaxf(0.0f, re * re + im * im));
+
+            leftWeightedSum += leftMag * weight;
+            rightWeightedSum += rightMag * weight;
+            weightTotal += weight;
         }
         int gain = 25;
         //compute overall height of left and right sample
-        float leftHeight = (leftSum / (endBin - startBin + 1)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
-        float rightHeight = (rightSum / (endBin - startBin + 1)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
-
-        if(std::isinf(leftHeight)){
-            std::cout << leftSum << " E " << std::endl;
-            std::cout << endBin << " " << startBin << std::endl;
-            std::cout << "L" << std::endl;
-        }
-        if(std::isinf(rightHeight)) std::cout << "R" << std::endl;
+        float leftHeight = (leftWeightedSum / (weightTotal + 1e-6f)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
+        float rightHeight = (rightWeightedSum / (weightTotal + 1e-6f)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
 
         //set default value to 0 if value is invalid
         if(std::isnan(leftHeight) || std::isinf(leftHeight) || leftHeight < 0) leftHeight = 0;
         if(std::isnan(rightHeight) || std::isinf(rightHeight) || rightHeight < 0) rightHeight = 0;
 
-        float prevRightHeight = abs(WINDOW_HEIGHT/2 - freqGraphArr[visBin].getBaseY());
-        float prevLeftHeight = freqGraphArr[visBin].getHeight() - (WINDOW_HEIGHT/2 - freqGraphArr[visBin].getBaseY());
+        float prevRightHeight = WINDOW_HEIGHT/2 - freqGraphArr[visBin].getBaseY();
+        float prevLeftHeight = freqGraphArr[visBin].getHeight() - prevRightHeight;
         //calculate smoothed values (exponential smoothing)
         float newLeftHeight = AuxComputations::expSmooth(prevLeftHeight, leftHeight, 0.85f);
-        float newRightHeight = AuxComputations::expSmooth(prevRightHeight, rightHeight, 0.85f);
+        float newRightHeight = AuxComputations::expSmooth(abs(prevRightHeight), rightHeight, 0.85f);
 
-        freqGraphArr[visBin].changeHeight(std::max(4.0f, newRightHeight + newLeftHeight));
-        freqGraphArr[visBin].changeYPos(WINDOW_HEIGHT/2 - std::max(2.0f, newRightHeight));
+        freqGraphArr[visBin].changeHeight(fmaxf(4.0f, newRightHeight + newLeftHeight));
+        freqGraphArr[visBin].changeYPos(WINDOW_HEIGHT/2 - fmaxf(2.0f, newRightHeight));
     }
     //update position array
     for(int i = 0; i < freqGraphArr.size(); i++){
@@ -345,8 +362,8 @@ int main(){
         fftw_complex* leftOut = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (NUM_FFT_SAMPLES/2 + 1));
         double* rightIn = (double*) fftw_malloc(NUM_FFT_SAMPLES * sizeof(double));
         fftw_complex* rightOut = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (NUM_FFT_SAMPLES/2 + 1));
-        memset(leftIn, 0, NUM_FFT_SAMPLES);
-        memset(rightIn, 0, NUM_FFT_SAMPLES);
+        std::fill(leftIn, leftIn + NUM_FFT_SAMPLES, 0.0);
+        std::fill(rightIn, rightIn + NUM_FFT_SAMPLES, 0.0);
         for(int i = 0; i < (NUM_FFT_SAMPLES/2 + 1); i++){
             leftOut[i][0] = 0;
             leftOut[i][1] = 0;
@@ -371,6 +388,7 @@ int main(){
             linearFreqSpacingTable[i] = MIN_FREQ + (float)i/(NUM_GRAPH_SAMPLES+1) * (MAX_FREQ - MIN_FREQ);
         }
         generateCustomBins(customFreqSpacingTable);
+        std::deque<float> rollingFreqBuffer(NUM_FFT_SAMPLES, 0.0f);
         //end setting up frequency graph
 
         Shader shader("./res/shaders/shader.glsl");
@@ -395,7 +413,8 @@ int main(){
         #else
         home_dir = std::getenv("HOME");
         #endif
-        std::vector<std::string> fpath = pfd::open_file("Select a File", ".", {"Audio Files", "*.wav"}).result();
+        std::vector<std::string> fpath = pfd::open_file("Select a File", ".", 
+            {"Audio Files", "*.wav *.mp3 *.flac *.ogg"}).result();
 
         if(fpath.size() < 1){
             std::cout << "No File Selected" << std::endl;
@@ -417,9 +436,8 @@ int main(){
         createDevice(device, decoder, filepath, audioBuffer);
 
         bool hasPlayed = false;
-        //set it a tiny bit below the actual samples needed
-        //to reduce frame drops
-        int samplesPerDrawCall = AUDIO_SAMPLE_RATE / mode->refreshRate - 2;
+        //number of samples to be read per frame = sampling rate / refresh rate
+        int samplesPerDrawCall = AUDIO_SAMPLE_RATE / mode->refreshRate;
         float prevLeftSample = 0;
         float prevRightSample = 0;
         float prevLeftDB = 1.0f;
@@ -463,19 +481,39 @@ int main(){
                     prevLeftDB = leftDB;
                     prevRightDB = rightDB;
 
-                    memset(leftIn, 0, NUM_FFT_SAMPLES);
-                    memset(rightIn, 0, NUM_FFT_SAMPLES);
-                    int idx = 0;
-                    for(int i = 0; i < arraySamples.size(); i+=2){
-                        leftIn[idx] = (double) arraySamples[i];
-                        rightIn[idx] = (double) arraySamples[i+1];
-                        idx++;
+                    for(int i = 0; i < arraySamples.size(); i++){
+                        rollingFreqBuffer.push_back(arraySamples[i]);
+                        //hop with size of samples per draw call;
+                        //if buffer is full, compute FFT and remove samples
+                        if(rollingFreqBuffer.size() >= samplesPerDrawCall){
+                            //fill in input array and compute FFT
+                            std::fill(leftIn, leftIn + NUM_FFT_SAMPLES, 0.0);
+                            std::fill(rightIn, rightIn + NUM_FFT_SAMPLES, 0.0);
+                            int idx = 0;
+                            for(int i = 0; i < rollingFreqBuffer.size(); i+=2){
+                                leftIn[idx] = (double) rollingFreqBuffer[i];
+                                rightIn[idx] = (double) rollingFreqBuffer[i+1];
+                                idx++;
+                            }
+                            fftw_execute(freqGraphPlanLeft);
+                            fftw_execute(freqGraphPlanRight);
+                            //update frequency bars
+                            updateFreqValues(freqGraph, freqIterator, 
+                                        freqGraphObj.mappedPositions, freqGraphObj.mappedIndices, 
+                                        leftOut, rightOut, customFreqSpacingTable);
+                            //clear output values after frequency change
+                            for(int i = 0; i < (NUM_FFT_SAMPLES/2 + 1); i++){
+                                leftOut[i][0] = 0;
+                                leftOut[i][1] = 0;
+                                rightOut[i][0] = 0;
+                                rightOut[i][1] = 0;
+                            }
+                            //remove samples after fft computation
+                            for(int j = 0; j < samplesPerDrawCall; j++){
+                                rollingFreqBuffer.pop_front();
+                            }
+                        }
                     }
-                    fftw_execute(freqGraphPlanLeft);
-                    fftw_execute(freqGraphPlanRight);
-                    updateFreqValues(freqGraph, freqIterator, 
-                                freqGraphObj.mappedPositions, freqGraphObj.mappedIndices, 
-                                leftOut, rightOut, customFreqSpacingTable);
                 }
                 if(!hasPlayed && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){
                     startAudioCallback(device, decoder);
@@ -553,10 +591,19 @@ Friday 25 April 2025:
 Sunday 27 April 2025:
     - Add file picker option
 
+(Assignment Break)
+
 Friday 23 May 2025:
     - changed AuxComputations to accept an array of values instead of popping from the queue
 Saturday 24 May 2025:
     - added frequency graph and FFT computations
 Sunday 25 May 2025:
     - tweaked FFT settings to reduce errors
+    - added weighting heuristic
+    - added customizable bin separation (called distance-weighted binning)
+    - increased FFT bin size to create smoother visuals
+Monday 26 May 2025:
+    - Added customizability on graph appearance using macros
+    - Added customizability on bin spacing
+    - Added hopping to increase smoothness of frequency graph
 */
