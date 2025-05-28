@@ -63,10 +63,13 @@ int createDevice(ma_device& device, ma_decoder& decoder, const char* filepath, T
     return 0;
 }
 
-void startAudioCallback(ma_device& device, ma_decoder& decoder){
+void startAudioCallback(ma_device& device){
     ma_device_start(&device);
-    // printf("Playing... Press Enter to quit.\n");
-    // getchar();
+    return;
+}
+
+void stopAudioCallback(ma_device& device){
+    ma_device_stop(&device);
     return;
 }
 

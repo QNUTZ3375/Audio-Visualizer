@@ -16,7 +16,9 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
 int createDevice(ma_device& device, ma_decoder& decoder, const char* filepath, TrackRingBuffer& audioBuffer);
 
-void startAudioCallback(ma_device& device, ma_decoder& decoder);
+void startAudioCallback(ma_device& device);
+
+void stopAudioCallback(ma_device& device);
 
 void printRingBufferContents(RingBuffer<float>& ringBuffer);
 
