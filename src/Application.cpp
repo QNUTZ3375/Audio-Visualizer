@@ -52,6 +52,15 @@
 #define HERTZ_PARTITIONS_INIT {MIN_FREQ, 60, 200, 1000, 2000, MAX_FREQ} //divides into important frequency ranges
 #define BIN_PARTITIONS_INIT {1, 48, 100, 72, 35} //Adds to NUM_GRAPH_SAMPLES (256)
 
+typedef enum{
+    INACTIVE = -1,
+    PAUSED = 0,
+    PLAYING = 1
+} DeviceStatus;
+
+static DeviceStatus audioDeviceStatus = INACTIVE;
+static bool toggleFileSelector = false;
+
 void processInput(GLFWwindow *window){
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
@@ -59,6 +68,21 @@ void processInput(GLFWwindow *window){
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
+    ma_device* device = static_cast<ma_device*>(glfwGetWindowUserPointer(window));
+    if(audioDeviceStatus != INACTIVE && key == GLFW_KEY_SPACE && action == GLFW_PRESS){
+        if (audioDeviceStatus == PAUSED){
+            startAudioCallback(*device);
+            audioDeviceStatus = PLAYING;
+        }
+        else{
+            stopAudioCallback(*device);
+            audioDeviceStatus = PAUSED;
+        }
+        toggleFileSelector = true;
+    }
 }
 
 void generateCustomBins(float* freqTable){
@@ -229,6 +253,21 @@ void addSeparatorLine(size_t offset, float* positions, unsigned int* indices){
     separator.fillIndices(indices, NUM_INDEX_POINTS*(offset));
 }
 
+bool checkMousePos(GLFWwindow* window, SampleLine targetObj){
+    if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS){
+        return false;
+    }
+    double mouseX;
+    double mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+    mouseY = WINDOW_HEIGHT - mouseY;
+    if(mouseX >= targetObj.getBaseX() && mouseX <= targetObj.getBaseX() + targetObj.getWidth()
+        && mouseY >= targetObj.getBaseY() && mouseY <= targetObj.getBaseY() + targetObj.getHeight()){
+            return true;
+    }
+    return false;
+}
+
 int main(){
     //intialize glfw and configure
     if(!glfwInit()) return -1;
@@ -236,9 +275,9 @@ int main(){
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
+    #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
+    #endif
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     //initialize window
     GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Audio Visualizer", nullptr, nullptr);
@@ -249,6 +288,7 @@ int main(){
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetKeyCallback(window, key_callback);
     
     const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
 
@@ -300,7 +340,7 @@ int main(){
         unsigned int dbIndices[NUM_INDEX_POINTS*6];
         int dbIterator = 0;
         float dbXPos = WINDOW_MARGIN;
-        float dbYPos = WINDOW_MARGIN;
+        float dbYPos = WINDOW_MARGIN + 10.0f;
 
         SampleLine blackOutline(dbIterator, dbXPos - 5, dbYPos - 5, 
             70, DECIBEL_METER_MAX_LENGTH + 10 + 10, 
@@ -391,6 +431,107 @@ int main(){
         std::deque<float> rollingFreqBuffer(NUM_FFT_SAMPLES, 0.0f);
         //end setting up frequency graph
 
+        //start setting up miscellaneous icons
+        float icon_size = 60.0f;
+        float icon_offset = 20.0f;
+        float miscIconXpos = WINDOW_MARGIN + icon_offset;
+        float miscIconYpos = WINDOW_HEIGHT - WINDOW_MARGIN - icon_offset - icon_size;
+        //2 for pause icon, 0.5 for play icon, 2 for file icon
+        float pauseButtonPositions[(int)(NUM_TOTAL_VERTEX_POINTS*2.0f)] = {
+            miscIconXpos + icon_size*0.2f, miscIconYpos            , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.4f, miscIconYpos            , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.4f, miscIconYpos + icon_size, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.2f, miscIconYpos + icon_size, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.6f, miscIconYpos            , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.8f, miscIconYpos            , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.8f, miscIconYpos + icon_size, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size*0.6f, miscIconYpos + icon_size, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        unsigned int pauseButtonIndices[(int)(NUM_INDEX_POINTS*2.0f)] = {
+            0, 1, 2, 2, 3, 0,
+            4, 5, 6, 6, 7, 4,
+        };
+        MappedDrawObj pauseButtonObj(pauseButtonPositions, pauseButtonIndices, 
+            (size_t)(NUM_TOTAL_VERTEX_POINTS * 2.0f), 
+            (size_t)(NUM_INDEX_POINTS * 2.0f), layout);
+
+        float startButtonPositions[(int)(NUM_TOTAL_VERTEX_POINTS*0.75f)] = {
+            miscIconXpos            , miscIconYpos                 , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos            , miscIconYpos + icon_size     , 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            miscIconXpos + icon_size, miscIconYpos + icon_size*0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        unsigned int startButtonIndices[(int)(NUM_INDEX_POINTS*0.5f)] = {
+            0, 1, 2,
+        };
+        MappedDrawObj startButtonObj(startButtonPositions, startButtonIndices, 
+            (size_t)(NUM_TOTAL_VERTEX_POINTS * 2.0f), 
+            (size_t)(NUM_INDEX_POINTS * 2.0f), layout);
+
+        float fileOpenButtonXpos = WINDOW_WIDTH - WINDOW_MARGIN - icon_offset - icon_size;
+        float fileOpenButtonYpos = WINDOW_HEIGHT - WINDOW_MARGIN - icon_size - icon_offset;
+        float fileButtonPositions[(int)(NUM_TOTAL_VERTEX_POINTS*3.0f)] = {
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.1f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.65f, 1.0f, 0.48f, 0.48f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size     , fileOpenButtonYpos + icon_size*0.65f, 1.0f, 0.48f, 0.48f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size     , fileOpenButtonYpos + icon_size*0.1f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.65f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.8f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size     , fileOpenButtonYpos + icon_size*0.8f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size     , fileOpenButtonYpos + icon_size*0.65f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.8f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos                 , fileOpenButtonYpos + icon_size*0.9f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size*0.5f, fileOpenButtonYpos + icon_size*0.9f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+            fileOpenButtonXpos + icon_size*0.5f, fileOpenButtonYpos + icon_size*0.8f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f,
+        };
+        unsigned int fileButtonIndices[(int)(NUM_INDEX_POINTS*3.0f)] = {
+            0, 1, 2, 2, 3, 0,
+            4, 5, 6, 6, 7, 4,
+            8, 9, 10, 10, 11, 8,
+        };
+        MappedDrawObj fileButtonObj(fileButtonPositions, fileButtonIndices, 
+            (size_t)(NUM_TOTAL_VERTEX_POINTS * 3.0f), 
+            (size_t)(NUM_INDEX_POINTS * 3.0f), layout);
+
+        float border_icon_size = 100.0f;
+        float border_margin = 5.0f;
+        float borderXpos = WINDOW_MARGIN;
+        float borderYpos = WINDOW_HEIGHT - WINDOW_MARGIN - border_icon_size;
+        float fileBorderXpos = WINDOW_WIDTH - WINDOW_MARGIN - border_icon_size;
+        float borderButtonPositions[(int)(NUM_TOTAL_VERTEX_POINTS*4.0f)];
+        unsigned int borderButtonIndices[(int)(NUM_INDEX_POINTS*4.0f)];
+
+        float borderIterator = 0;
+        SampleLine border(borderIterator, borderXpos, borderYpos, 
+            border_icon_size, border_icon_size, 0.0f, 0.0f, 0.0f, 1.0f);
+        border.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
+        border.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
+        borderIterator++;
+
+        SampleLine borderFile(borderIterator, fileBorderXpos, borderYpos, 
+            border_icon_size, border_icon_size, 0.0f, 0.0f, 0.0f, 1.0f);
+        borderFile.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
+        borderFile.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
+        borderIterator++;
+
+        SampleLine borderInterior(borderIterator, borderXpos + border_margin, borderYpos + border_margin, 
+            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, 0.88f, 0.76f, 0.64f, 1.0f);
+        borderInterior.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
+        borderInterior.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
+        borderIterator++;
+
+        SampleLine borderFileInterior(borderIterator, fileBorderXpos + border_margin, borderYpos + border_margin, 
+            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, 0.88f, 0.76f, 0.64f, 1.0f);
+        borderFileInterior.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
+        borderFileInterior.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
+        borderIterator++;
+
+        MappedDrawObj borderButtonObj(borderButtonPositions, borderButtonIndices, 
+            (size_t)(NUM_TOTAL_VERTEX_POINTS * 4.0f), 
+            (size_t)(NUM_INDEX_POINTS * 4.0f), layout);
+        //end setting up miscellaneous icons
+
         Shader shader("./res/shaders/shader.glsl");
         Renderer renderer;
 
@@ -414,7 +555,7 @@ int main(){
         home_dir = std::getenv("HOME");
         #endif
         std::vector<std::string> fpath = pfd::open_file("Select a File", ".", 
-            {"Audio Files", "*.wav *.mp3 *.flac *.ogg"}).result();
+            {"Audio Files", "*.wav *.mp3 *.flac *.ogg"}, /*multiselect=*/false).result();
 
         if(fpath.size() < 1){
             std::cout << "No File Selected" << std::endl;
@@ -429,13 +570,15 @@ int main(){
 
         ma_device device;
         ma_decoder decoder;
+
+        glfwSetWindowUserPointer(window, &device);
+
         //file_example_WAV_1MG
         //Moon_River_Audio_File
         const char* filepath = fpath.at(0).c_str();
         TrackRingBuffer audioBuffer;
         createDevice(device, decoder, filepath, audioBuffer);
 
-        bool hasPlayed = false;
         //number of samples to be read per frame = sampling rate / refresh rate
         int samplesPerDrawCall = AUDIO_SAMPLE_RATE / mode->refreshRate;
         float prevLeftSample = 0;
@@ -443,6 +586,9 @@ int main(){
         float prevLeftDB = 1.0f;
         float prevRightDB = 1.0f;
 
+        audioDeviceStatus = PAUSED;
+        bool cursorPressedBefore = false;
+        bool canSelectFile = true;
         while(!glfwWindowShouldClose(window)){
             processInput(window);
 
@@ -452,7 +598,7 @@ int main(){
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             {
-                if(hasPlayed && !(*audioBuffer.ringBuffer).isEmpty()){
+                if(audioDeviceStatus == PLAYING && !(*audioBuffer.ringBuffer).isEmpty()){
                     if((*audioBuffer.ringBuffer).getSize() >= 2*samplesPerDrawCall){
                         for(int i = 0; i < samplesPerDrawCall; i++){
                             float temp;
@@ -515,9 +661,8 @@ int main(){
                         }
                     }
                 }
-                if(!hasPlayed && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){
-                    startAudioCallback(device, decoder);
-                    hasPlayed = true;
+                if(audioBuffer.trackEnded == true){
+                    audioDeviceStatus = INACTIVE;
                 }
                 // model handles the objects view
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), translation);
@@ -528,6 +673,38 @@ int main(){
                 renderer.Draw(graphObj.va, graphObj.ib, shader);
                 renderer.Draw(dbMeterObj.va, dbMeterObj.ib, shader);
                 renderer.Draw(freqGraphObj.va, freqGraphObj.ib, shader);
+                renderer.Draw(borderButtonObj.va, borderButtonObj.ib, shader);
+                if(audioDeviceStatus == PLAYING){
+                    renderer.Draw(pauseButtonObj.va, pauseButtonObj.ib, shader);
+                }
+                if(audioDeviceStatus <= PAUSED){
+                    renderer.Draw(startButtonObj.va, startButtonObj.ib, shader);
+                }
+                renderer.Draw(fileButtonObj.va, fileButtonObj.ib, shader);
+                if(!cursorPressedBefore && canSelectFile && checkMousePos(window, borderFile) == true){
+                    std::cout << "ADD RESET" << std::endl;
+                    cursorPressedBefore = true;
+                }
+                if(!cursorPressedBefore && checkMousePos(window, border) == true){
+                    key_callback(window, GLFW_KEY_SPACE, 0, GLFW_PRESS, 0);
+                    cursorPressedBefore = true;
+                }
+                if(cursorPressedBefore && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE){
+                    cursorPressedBefore = false;
+                }
+                if(toggleFileSelector == true){
+                    if(audioDeviceStatus == PLAYING){
+                        canSelectFile = false;
+                        borderFileInterior.changeColor(0.8f, 0.8f, 0.8f, 1.0f);
+                    }
+                    else{
+                        canSelectFile = true;
+                        borderFileInterior.changeColor(0.88f, 0.76f, 0.64f, 1.0f);
+                    }
+                    borderFileInterior.fillVertices(borderButtonObj.mappedPositions, 
+                        NUM_TOTAL_VERTEX_POINTS*(borderIterator - 1));
+                    toggleFileSelector = false;
+                }
             }
 
             {
@@ -606,4 +783,9 @@ Monday 26 May 2025:
     - Added customizability on graph appearance using macros
     - Added customizability on bin spacing
     - Added hopping to increase smoothness of frequency graph
+Tuesday 27 May 2025:
+    - Added the option to stop and resume a currently playing track
+    - Added play and pause icons
+Wednesday 28 May 2025:
+    - Prevented file selection while a track is playing
 */
