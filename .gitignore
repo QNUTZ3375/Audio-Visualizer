@@ -1,6 +1,7 @@
 Application
 Application.dSYM
 .vscode
+binaries
 *.wav
 *.mp3
 .DS_Store
