@@ -60,19 +60,32 @@ typedef enum{
 
 static DeviceStatus audioDeviceStatus = INACTIVE;
 static bool toggleFileSelector = false;
-
-void processInput(GLFWwindow *window){
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-}
+static bool resetGraphs = false;
+static std::string filepath;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
 }
 
+bool pickFile(){
+    std::vector<std::string> fpath = pfd::open_file("Select a File", ".", 
+    {"Audio Files", "*.wav *.mp3 *.flac *.ogg"}, /*multiselect=*/false).result();
+    if(fpath.size() < 1) return false;
+    audioDeviceStatus = INACTIVE;
+    filepath = fpath[0];
+    return true;
+}
+
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
+    if (action != GLFW_PRESS) return;
+
+    if(key == GLFW_KEY_ESCAPE){
+        glfwSetWindowShouldClose(window, true);
+        return;
+    }
+
     ma_device* device = static_cast<ma_device*>(glfwGetWindowUserPointer(window));
-    if(audioDeviceStatus != INACTIVE && key == GLFW_KEY_SPACE && action == GLFW_PRESS){
+    if(audioDeviceStatus != INACTIVE && key == GLFW_KEY_SPACE){
         if (audioDeviceStatus == PAUSED){
             startAudioCallback(*device);
             audioDeviceStatus = PLAYING;
@@ -82,7 +95,22 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             audioDeviceStatus = PAUSED;
         }
         toggleFileSelector = true;
+        return;
     }
+
+    #ifdef __APPLE__
+        // macOS: Cmd+O
+        bool cmdPressed = (mods & GLFW_MOD_SUPER) != 0;  // GLFW_MOD_SUPER is Cmd on macOS
+        if (audioDeviceStatus != PLAYING && cmdPressed && key == GLFW_KEY_O) {
+            if(pickFile() == true) resetGraphs = true;
+        }
+    #else
+        // Windows/Linux: Ctrl+O
+        bool ctrlPressed = (mods & GLFW_MOD_CONTROL) != 0;
+        if (audioDeviceStatus != PLAYING && ctrlPressed && key == GLFW_KEY_O) {
+            if(pickFile() == true) resetGraphs = true;
+        }
+    #endif
 }
 
 void generateCustomBins(float* freqTable){
@@ -324,13 +352,13 @@ int main(){
 
         //start setting up main graph
         std::vector<SampleLine> ampGraph;
-        float positions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
-        unsigned int indices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
-        int iterator = 0;
-        generateGraph(ampGraph, positions, indices, funcTable, iterator);
-        addSeparatorLine(NUM_GRAPH_SAMPLES, positions, indices);
+        float ampPositions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
+        unsigned int ampIndices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
+        int ampIterator = 0;
+        generateGraph(ampGraph, ampPositions, ampIndices, funcTable, ampIterator);
+        addSeparatorLine(NUM_GRAPH_SAMPLES, ampPositions, ampIndices);
 
-        MappedDrawObj graphObj(positions, indices, 
+        MappedDrawObj ampGraphObj(ampPositions, ampIndices, 
             NUM_TOTAL_VERTEX_POINTS * (NUM_GRAPH_SAMPLES + 1), 
             NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1), layout);
         //end setting up main graph
@@ -382,6 +410,7 @@ int main(){
             0.85f, 0.85f, 0.85f, 0.7f);
         rightDecibelMeter.fillVertices(dbPositions, NUM_TOTAL_VERTEX_POINTS*dbIterator);
         rightDecibelMeter.fillIndices(dbIndices, NUM_INDEX_POINTS*dbIterator);
+        dbIterator++;
 
         MappedDrawObj dbMeterObj(dbPositions, dbIndices, 
             NUM_TOTAL_VERTEX_POINTS*6, NUM_INDEX_POINTS*6, layout);
@@ -554,10 +583,10 @@ int main(){
         #else
         home_dir = std::getenv("HOME");
         #endif
-        std::vector<std::string> fpath = pfd::open_file("Select a File", ".", 
-            {"Audio Files", "*.wav *.mp3 *.flac *.ogg"}, /*multiselect=*/false).result();
 
-        if(fpath.size() < 1){
+        //file_example_WAV_1MG
+        //Moon_River_Audio_File
+        if(pickFile() == false){
             std::cout << "No File Selected" << std::endl;
             fftw_free(leftIn);
             fftw_free(leftOut);
@@ -568,16 +597,15 @@ int main(){
             return 0;
         }
 
+        std::cout << filepath << std::endl;
+
         ma_device device;
         ma_decoder decoder;
 
         glfwSetWindowUserPointer(window, &device);
 
-        //file_example_WAV_1MG
-        //Moon_River_Audio_File
-        const char* filepath = fpath.at(0).c_str();
         TrackRingBuffer audioBuffer;
-        createDevice(device, decoder, filepath, audioBuffer);
+        createDevice(device, decoder, filepath.c_str(), audioBuffer);
 
         //number of samples to be read per frame = sampling rate / refresh rate
         int samplesPerDrawCall = AUDIO_SAMPLE_RATE / mode->refreshRate;
@@ -590,10 +618,7 @@ int main(){
         bool cursorPressedBefore = false;
         bool canSelectFile = true;
         while(!glfwWindowShouldClose(window)){
-            processInput(window);
-
             renderer.Clear();
-
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
@@ -613,8 +638,8 @@ int main(){
                     AuxComputations::computePeakValueStereo(arraySamples, samplesPerDrawCall, leftSample, rightSample);
                     leftSample = AuxComputations::expSmooth(prevLeftSample, leftSample, 0.3f);
                     rightSample = AuxComputations::expSmooth(prevRightSample, rightSample, 0.3f);
-                    shiftGraphLeft(ampGraph, iterator, 
-                                graphObj.mappedPositions, graphObj.mappedIndices, 
+                    shiftGraphLeft(ampGraph, ampIterator, 
+                                ampGraphObj.mappedPositions, ampGraphObj.mappedIndices, 
                                 leftSample, rightSample);
                     prevLeftSample = leftSample;
                     prevRightSample = rightSample;
@@ -663,6 +688,7 @@ int main(){
                 }
                 if(audioBuffer.trackEnded == true){
                     audioDeviceStatus = INACTIVE;
+                    toggleFileSelector = true;
                 }
                 // model handles the objects view
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), translation);
@@ -670,7 +696,7 @@ int main(){
                 glm::mat4 mvp = proj * view * model;
                 shader.Bind();
                 shader.SetUniformMat4f("u_MVP", mvp);
-                renderer.Draw(graphObj.va, graphObj.ib, shader);
+                renderer.Draw(ampGraphObj.va, ampGraphObj.ib, shader);
                 renderer.Draw(dbMeterObj.va, dbMeterObj.ib, shader);
                 renderer.Draw(freqGraphObj.va, freqGraphObj.ib, shader);
                 renderer.Draw(borderButtonObj.va, borderButtonObj.ib, shader);
@@ -682,7 +708,7 @@ int main(){
                 }
                 renderer.Draw(fileButtonObj.va, fileButtonObj.ib, shader);
                 if(!cursorPressedBefore && canSelectFile && checkMousePos(window, borderFile) == true){
-                    std::cout << "ADD RESET" << std::endl;
+                    if(pickFile() == true) resetGraphs = true;
                     cursorPressedBefore = true;
                 }
                 if(!cursorPressedBefore && checkMousePos(window, border) == true){
@@ -705,11 +731,39 @@ int main(){
                         NUM_TOTAL_VERTEX_POINTS*(borderIterator - 1));
                     toggleFileSelector = false;
                 }
+                if(resetGraphs == true){
+                    //reset all graphs
+                    ampGraph.clear();
+                    ampIterator = 0;
+                    freqGraph.clear();
+                    freqIterator = 0;
+                    generateGraph(ampGraph, ampGraphObj.mappedPositions, 
+                        ampGraphObj.mappedIndices, funcTable, ampIterator);
+                    generateFreqGraph(freqGraph, freqGraphObj.mappedPositions, 
+                        freqGraphObj.mappedIndices, funcTable, freqIterator);
+                    //reset decibel meters
+                    leftDecibelMeter.changeWidth(DECIBEL_METER_MAX_LENGTH);
+                    leftDecibelMeter.changeColor(0.85f, 0.85f, 0.85f, 0.7f);
+                    leftDecibelMeter.fillVertices(dbMeterObj.mappedPositions, 
+                        NUM_TOTAL_VERTEX_POINTS*(dbIterator - 2));
+                    rightDecibelMeter.changeWidth(DECIBEL_METER_MAX_LENGTH);
+                    rightDecibelMeter.changeColor(0.85f, 0.85f, 0.85f, 0.7f);
+                    rightDecibelMeter.fillVertices(dbMeterObj.mappedPositions, 
+                        NUM_TOTAL_VERTEX_POINTS*(dbIterator - 1));
+                    //destroy current device (old filepath)
+                    destroyDevice(device, decoder, audioBuffer);
+                    //create new device with new filepath
+                    createDevice(device, decoder, filepath.c_str(), audioBuffer);
+                    audioBuffer.trackEnded = false;
+                    audioDeviceStatus = PAUSED;
+                    resetGraphs = false;
+                }
             }
 
             {
                 ImGui::SliderFloat3("Translation", &translation.x, -WINDOW_WIDTH, WINDOW_WIDTH);
-                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 
+                    1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             }
 
             ImGui::Render();
@@ -788,4 +842,5 @@ Tuesday 27 May 2025:
     - Added play and pause icons
 Wednesday 28 May 2025:
     - Prevented file selection while a track is playing
+    - Added the option to pick a new file after playback finished
 */
