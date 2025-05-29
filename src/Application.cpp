@@ -622,6 +622,9 @@ int main(){
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(dbXPos + DECIBEL_METER_MAX_LENGTH + 50, 
+                WINDOW_HEIGHT - dbYPos - 80), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(WINDOW_WIDTH/2 + 20, 100), ImGuiCond_Once);
             {
                 if(audioDeviceStatus == PLAYING && !(*audioBuffer.ringBuffer).isEmpty()){
                     if((*audioBuffer.ringBuffer).getSize() >= 2*samplesPerDrawCall){
@@ -761,11 +764,15 @@ int main(){
             }
 
             {
-                ImGui::SliderFloat3("Translation", &translation.x, -WINDOW_WIDTH, WINDOW_WIDTH);
+                ImGui::Begin("Now Playing");
+                ImGui::TextWrapped("%s", filepath.c_str());
+
+                // ImGui::SliderFloat3("Translation", &translation.x, -WINDOW_WIDTH, WINDOW_WIDTH);
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 
                     1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            }
 
+                ImGui::End();
+            }
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     
@@ -784,6 +791,7 @@ int main(){
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+    glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }
@@ -843,4 +851,6 @@ Tuesday 27 May 2025:
 Wednesday 28 May 2025:
     - Prevented file selection while a track is playing
     - Added the option to pick a new file after playback finished
+Thursday 29 May 2025:
+    - Added a text box to display the filepath of the track currently being played
 */
