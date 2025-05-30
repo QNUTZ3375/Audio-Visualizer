@@ -16,6 +16,7 @@
 #include "AudioPlayer.h"
 #include "AuxComputations.h"
 #include "MappedDrawObj.h"
+#include "ColorThemes.h"
 
 #include "vendor/glm/glm.hpp"
 #include "vendor/glm/gtc/matrix_transform.hpp"
@@ -62,6 +63,8 @@ static DeviceStatus audioDeviceStatus = INACTIVE;
 static bool toggleFileSelector = false;
 static bool resetGraphs = false;
 static std::string filepath;
+static std::string filename;
+static std::map<ColorThemes::ThemeType, ColorThemes::Theme> themeTable;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
@@ -73,6 +76,11 @@ bool pickFile(){
     if(fpath.size() < 1) return false;
     audioDeviceStatus = INACTIVE;
     filepath = fpath[0];
+    const char* tempfilename = std::strrchr(filepath.c_str(), '/');
+    if (!tempfilename) tempfilename = std::strrchr(filepath.c_str(), '\\');
+    if (tempfilename) tempfilename++; // Move past the slash
+    else tempfilename = filepath.c_str(); // No slash found
+    filename = tempfilename;
     return true;
 }
 
@@ -134,9 +142,9 @@ void generateCustomBins(float* freqTable){
 }
 
 void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
-    AuxComputations::RGBColor color = {0, 0, 0};
+    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
     for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGB(iterator, 0.6, 0.7, color);
+        HSBtoRGBA(iterator, 0.6, 0.7, color);
         graphArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
                                         4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, 1.0f));
@@ -146,9 +154,9 @@ void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned
 }
 
 void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
-    AuxComputations::RGBColor color = {0, 0, 0};
+    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
     for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGB((SCALING_FACTOR/(NUM_HALVES/2))*iterator, 1, 1, color);
+        HSBtoRGBA((SCALING_FACTOR/(NUM_HALVES/2))*iterator, 1, 1, color);
         freqArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
                                         4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, 0.9f));
@@ -169,9 +177,9 @@ void shiftGraphLeft(std::vector<SampleLine>& graphArr, int& iterator, float* pos
     }
 
     //update last element
-    AuxComputations::RGBColor color = {0, 0, 0};
+    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
     iterator %= 360;
-    AuxComputations::HSBtoRGB(iterator, 0.6, 0.7, color);
+    AuxComputations::HSBtoRGBA(iterator, 0.6, 0.7, color);
     graphArr.back().changeColor(color.r, color.g, color.b, 1.0f);
     graphArr.back().changeYPos(WINDOW_HEIGHT/2 - (2 + MAX_AMPLITUDE_HEIGHT * rightSample));
     graphArr.back().changeHeight(2 + MAX_AMPLITUDE_HEIGHT * rightSample + 2 + MAX_AMPLITUDE_HEIGHT * leftSample);
@@ -764,8 +772,8 @@ int main(){
             }
 
             {
-                ImGui::Begin("Now Playing");
-                ImGui::TextWrapped("%s", filepath.c_str());
+                ImGui::Begin("Information");
+                ImGui::TextWrapped("Now Playing: %s", filename.c_str());
 
                 // ImGui::SliderFloat3("Translation", &translation.x, -WINDOW_WIDTH, WINDOW_WIDTH);
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 
