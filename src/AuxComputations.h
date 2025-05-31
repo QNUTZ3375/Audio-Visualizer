@@ -9,11 +9,12 @@ namespace AuxComputations{
         float r;
         float g;
         float b;
-    } RGBColor;
+        float a;
+    } RGBAColor;
 
     void fillArrayWithSamples(RingBuffer<float>& ringBuffer, std::vector<float>& outArray, size_t amtOfSamples);
     
-    void HSBtoRGB(int h, float s, float b, AuxComputations::RGBColor& target);
+    void HSBtoRGBA(int h, float s, float b, AuxComputations::RGBAColor& target);
     
     void computeRMSValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal);
     

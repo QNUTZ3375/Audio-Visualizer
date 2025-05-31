@@ -8,7 +8,7 @@ void AuxComputations::fillArrayWithSamples(RingBuffer<float>& ringBuffer, std::v
     }
 }
 
-void AuxComputations::HSBtoRGB(int h, float s, float b, AuxComputations::RGBColor& target){
+void AuxComputations::HSBtoRGBA(int h, float s, float b, AuxComputations::RGBAColor& target){
     h = h % 360;
     if(s < 0) s = 0;
     if(s > 1) s = 1;
@@ -18,7 +18,7 @@ void AuxComputations::HSBtoRGB(int h, float s, float b, AuxComputations::RGBColo
     float c = b * s;
     float x = c * (1 - abs((fmod(h/60.0f, 2.0f) - 1)));
     float m = b - c;
-    AuxComputations::RGBColor primes = {0, 0, 0};
+    AuxComputations::RGBAColor primes = {0, 0, 0, 0};
     if(h >= 0 && h < 60) primes = {c, x, 0};
     if(h >= 60 && h < 120) primes = {x, c, 0};
     if(h >= 120 && h < 180) primes = {0, c, x}; 
@@ -26,7 +26,7 @@ void AuxComputations::HSBtoRGB(int h, float s, float b, AuxComputations::RGBColo
     if(h >= 240 && h < 300) primes = {x, 0, c}; 
     if(h >= 300 && h < 360) primes = {c, 0, x};
 
-    target = {primes.r + m, primes.g + m, primes.b + m };
+    target = {primes.r + m, primes.g + m, primes.b + m, target.a};
 }
 
 void AuxComputations::computeRMSValueStereo(std::vector<float>& arraySamples, size_t amtOfSamples, float& leftVal, float& rightVal){
