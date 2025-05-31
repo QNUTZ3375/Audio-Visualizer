@@ -141,31 +141,31 @@ void generateCustomBins(float* freqTable){
     freqTable[NUM_GRAPH_SAMPLES] = MAX_FREQ;
 }
 
-void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
-    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
-    for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGBA(iterator, 0.6, 0.7, color);
-        graphArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
-                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
-                                        color.r, color.g, color.b, 1.0f));
-        graphArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
-        graphArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
+void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme& theme){
+    for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
+        AuxComputations::RGBAColor color = theme.generateColorSecondary();
+        theme.updateSecondaryIterator();
+        graphArr.push_back(SampleLine(i, WINDOW_MARGIN + i*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
+                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*i)%360], SAMPLE_WIDTH,
+                                        color.r, color.g, color.b, color.a));
+        graphArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
+        graphArr.back().fillIndices(indices, NUM_INDEX_POINTS*i);
     }
 }
 
-void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, int& iterator){
-    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
-    for(iterator = 0; iterator < NUM_GRAPH_SAMPLES; iterator++){
-        HSBtoRGBA((SCALING_FACTOR/(NUM_HALVES/2))*iterator, 1, 1, color);
-        freqArr.push_back(SampleLine(iterator, WINDOW_MARGIN + iterator*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
-                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*iterator)%360], SAMPLE_WIDTH,
-                                        color.r, color.g, color.b, 0.9f));
-        freqArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*iterator);
-        freqArr.back().fillIndices(indices, NUM_INDEX_POINTS*iterator);
+void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme& theme){
+    for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
+        AuxComputations::RGBAColor color = theme.generateColorPrimary();
+        theme.updatePrimaryIterator();
+        freqArr.push_back(SampleLine(i, WINDOW_MARGIN + i*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
+                                        4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*i)%360], SAMPLE_WIDTH,
+                                        color.r, color.g, color.b, color.a));
+        freqArr.back().fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
+        freqArr.back().fillIndices(indices, NUM_INDEX_POINTS*i);
     }
 }
 
-void shiftGraphLeft(std::vector<SampleLine>& graphArr, int& iterator, float* positions, unsigned int* indices, float leftSample, float rightSample){
+void shiftGraphLeft(std::vector<SampleLine>& graphArr, ColorThemes::Theme& theme, float* positions, unsigned int* indices, float leftSample, float rightSample){
     //update all graph bars and shift left
     for(int i = 0; i < NUM_GRAPH_SAMPLES - 1; i++){
         const float* newColors = graphArr[i+1].getColors();
@@ -177,22 +177,20 @@ void shiftGraphLeft(std::vector<SampleLine>& graphArr, int& iterator, float* pos
     }
 
     //update last element
-    AuxComputations::RGBAColor color = {0, 0, 0, 1.0f};
-    iterator %= 360;
-    AuxComputations::HSBtoRGBA(iterator, 0.6, 0.7, color);
-    graphArr.back().changeColor(color.r, color.g, color.b, 1.0f);
+    AuxComputations::RGBAColor color = theme.generateColorSecondary();
+    graphArr.back().changeColor(color.r, color.g, color.b, color.a);
     graphArr.back().changeYPos(WINDOW_HEIGHT/2 - (2 + MAX_AMPLITUDE_HEIGHT * rightSample));
     graphArr.back().changeHeight(2 + MAX_AMPLITUDE_HEIGHT * rightSample + 2 + MAX_AMPLITUDE_HEIGHT * leftSample);
 
     //increment iterator after creating sample
-    iterator = (iterator + 1);
+    theme.updateSecondaryIterator();
     //update position array
     for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
         graphArr.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
     }
 }
 
-void updateFreqValues(std::vector<SampleLine>& freqGraphArr, int& iterator, float* positions, unsigned int* indices, fftw_complex* leftSamples, fftw_complex* rightSamples, float* freqSeparationTable){
+void updateFreqValues(std::vector<SampleLine>& freqGraphArr, ColorThemes::Theme& theme, float* positions, unsigned int* indices, fftw_complex* leftSamples, fftw_complex* rightSamples, float* freqSeparationTable){
     for(int visBin = 0; visBin < NUM_GRAPH_SAMPLES; visBin++){
         float startFreq = freqSeparationTable[visBin];
         float endFreq = freqSeparationTable[visBin+1];
@@ -235,7 +233,7 @@ void updateFreqValues(std::vector<SampleLine>& freqGraphArr, int& iterator, floa
             rightWeightedSum += rightMag * weight;
             weightTotal += weight;
         }
-        int gain = 25;
+        int gain = 30;
         //compute overall height of left and right sample
         float leftHeight = (leftWeightedSum / (weightTotal + 1e-6f)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
         float rightHeight = (rightWeightedSum / (weightTotal + 1e-6f)) / NUM_FFT_SAMPLES * MAX_AMPLITUDE_HEIGHT * gain;
@@ -337,6 +335,13 @@ int main(){
     GLCall(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
     GLCall(glEnable(GL_BLEND));
 
+    ColorThemes::InitializeThemes(themeTable, (SCALING_FACTOR/(NUM_HALVES/2)));
+    ColorThemes::Theme& currentTheme = themeTable.at(ColorThemes::ThemeType::YellowGrayScale);
+    AuxComputations::RGBAColor bgColorTheme = currentTheme.getBG();
+    // AuxComputations::RGBAColor txColorTheme = currentTheme.getText();
+    AuxComputations::RGBAColor btColorTheme = currentTheme.getButton();
+    // AuxComputations::RGBAColor pbColorTheme = currentTheme.getPlayButton();
+
     double sinTable[360] = {};
     for(int i = 0; i < 360; i++){
         sinTable[i] = sin(i * M_PI/180);
@@ -362,8 +367,8 @@ int main(){
         std::vector<SampleLine> ampGraph;
         float ampPositions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
         unsigned int ampIndices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
-        int ampIterator = 0;
-        generateGraph(ampGraph, ampPositions, ampIndices, funcTable, ampIterator);
+        
+        generateGraph(ampGraph, ampPositions, ampIndices, funcTable, currentTheme);
         addSeparatorLine(NUM_GRAPH_SAMPLES, ampPositions, ampIndices);
 
         MappedDrawObj ampGraphObj(ampPositions, ampIndices, 
@@ -428,8 +433,7 @@ int main(){
         std::vector<SampleLine> freqGraph;
         float freqPositions[NUM_TOTAL_VERTEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
         unsigned int freqIndices[NUM_INDEX_POINTS*(NUM_GRAPH_SAMPLES + 1)];
-        int freqIterator = 0;
-        generateFreqGraph(freqGraph, freqPositions, freqIndices, funcTable, freqIterator);
+        generateFreqGraph(freqGraph, freqPositions, freqIndices, funcTable, currentTheme);
 
         MappedDrawObj freqGraphObj(freqPositions, freqIndices, 
             NUM_TOTAL_VERTEX_POINTS * (NUM_GRAPH_SAMPLES + 1), 
@@ -553,13 +557,13 @@ int main(){
         borderIterator++;
 
         SampleLine borderInterior(borderIterator, borderXpos + border_margin, borderYpos + border_margin, 
-            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, 0.88f, 0.76f, 0.64f, 1.0f);
+            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, btColorTheme.r, btColorTheme.g, btColorTheme.b, btColorTheme.a);
         borderInterior.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
         borderInterior.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
         borderIterator++;
 
         SampleLine borderFileInterior(borderIterator, fileBorderXpos + border_margin, borderYpos + border_margin, 
-            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, 0.88f, 0.76f, 0.64f, 1.0f);
+            border_icon_size - 2*border_margin, border_icon_size - 2*border_margin, btColorTheme.r, btColorTheme.g, btColorTheme.b, btColorTheme.a);
         borderFileInterior.fillVertices(borderButtonPositions, NUM_TOTAL_VERTEX_POINTS*borderIterator);
         borderFileInterior.fillIndices(borderButtonIndices, NUM_INDEX_POINTS*borderIterator);
         borderIterator++;
@@ -626,7 +630,7 @@ int main(){
         bool cursorPressedBefore = false;
         bool canSelectFile = true;
         while(!glfwWindowShouldClose(window)){
-            renderer.Clear();
+            renderer.Clear(bgColorTheme.r, bgColorTheme.g, bgColorTheme.b, bgColorTheme.a);
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
@@ -649,7 +653,7 @@ int main(){
                     AuxComputations::computePeakValueStereo(arraySamples, samplesPerDrawCall, leftSample, rightSample);
                     leftSample = AuxComputations::expSmooth(prevLeftSample, leftSample, 0.3f);
                     rightSample = AuxComputations::expSmooth(prevRightSample, rightSample, 0.3f);
-                    shiftGraphLeft(ampGraph, ampIterator, 
+                    shiftGraphLeft(ampGraph, currentTheme, 
                                 ampGraphObj.mappedPositions, ampGraphObj.mappedIndices, 
                                 leftSample, rightSample);
                     prevLeftSample = leftSample;
@@ -680,7 +684,7 @@ int main(){
                             fftw_execute(freqGraphPlanLeft);
                             fftw_execute(freqGraphPlanRight);
                             //update frequency bars
-                            updateFreqValues(freqGraph, freqIterator, 
+                            updateFreqValues(freqGraph, currentTheme, 
                                         freqGraphObj.mappedPositions, freqGraphObj.mappedIndices, 
                                         leftOut, rightOut, customFreqSpacingTable);
                             //clear output values after frequency change
@@ -732,11 +736,11 @@ int main(){
                 if(toggleFileSelector == true){
                     if(audioDeviceStatus == PLAYING){
                         canSelectFile = false;
-                        borderFileInterior.changeColor(0.8f, 0.8f, 0.8f, 1.0f);
+                        borderFileInterior.changeColor(0.7f, 0.7f, 0.7f, 1.0f);
                     }
                     else{
                         canSelectFile = true;
-                        borderFileInterior.changeColor(0.88f, 0.76f, 0.64f, 1.0f);
+                        borderFileInterior.changeColor(btColorTheme.r, btColorTheme.g, btColorTheme.b, btColorTheme.a);
                     }
                     borderFileInterior.fillVertices(borderButtonObj.mappedPositions, 
                         NUM_TOTAL_VERTEX_POINTS*(borderIterator - 1));
@@ -745,13 +749,13 @@ int main(){
                 if(resetGraphs == true){
                     //reset all graphs
                     ampGraph.clear();
-                    ampIterator = 0;
+                    currentTheme.resetSecondaryIterator();
                     freqGraph.clear();
-                    freqIterator = 0;
+                    currentTheme.resetPrimaryIterator();
                     generateGraph(ampGraph, ampGraphObj.mappedPositions, 
-                        ampGraphObj.mappedIndices, funcTable, ampIterator);
+                        ampGraphObj.mappedIndices, funcTable, currentTheme);
                     generateFreqGraph(freqGraph, freqGraphObj.mappedPositions, 
-                        freqGraphObj.mappedIndices, funcTable, freqIterator);
+                        freqGraphObj.mappedIndices, funcTable, currentTheme);
                     //reset decibel meters
                     leftDecibelMeter.changeWidth(DECIBEL_METER_MAX_LENGTH);
                     leftDecibelMeter.changeColor(0.85f, 0.85f, 0.85f, 0.7f);
@@ -861,4 +865,6 @@ Wednesday 28 May 2025:
     - Added the option to pick a new file after playback finished
 Thursday 29 May 2025:
     - Added a text box to display the filepath of the track currently being played
+Saturday 31 May 2025:
+    - Added color theme options
 */
