@@ -49,6 +49,4 @@ namespace ColorThemes{
     };
 
     void InitializeThemes(std::map<ColorThemes::ThemeType, ColorThemes::Theme>& themeTable, float opt_args);
-
-    void ApplyThemeToImGuiWindow(const ColorThemes::Theme& t);
 }

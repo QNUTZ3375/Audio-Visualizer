@@ -204,24 +204,3 @@ void ColorThemes::InitializeThemes(std::map<ColorThemes::ThemeType, ColorThemes:
     neonDesRainbowTheme.SetPrimaryColorFunction(ColorThemes::ThemeType::NeonDesRainbow, opt_args);
     neonDesRainbowTheme.SetSecondaryColorFunction(ColorThemes::ThemeType::NeonDesRainbow, opt_args);
 }
-
-void ColorThemes::ApplyThemeToImGuiWindow(const ColorThemes::Theme& t){
-    ImVec4* colors = ImGui::GetStyle().Colors;
-
-    colors[ImGuiCol_WindowBg] = t.getBGVec4();
-    colors[ImGuiCol_Text] = t.getTextVec4();
-    colors[ImGuiCol_Button] = t.getButtonVec4();
-    // Continue applying as needed
-
-    // You can also pass theme values to your OpenGL renderer for graph coloring
-    // e.g., glUniform4f(shaderUniformLocation, t.graphPrimary.x, t.graphPrimary.y, ...)
-}
-
-// int stuff(){
-//     if (ImGui::Begin("Theme Selector")) {
-//     if (ImGui::Button("Light Theme")) ApplyTheme(themeTable[ThemeType::Light]);
-//     if (ImGui::Button("Neon Theme")) ApplyTheme(themeTable[ThemeType::Neon]);
-//     // Add more buttons for themes
-//     ImGui::End();
-// }
-// }
