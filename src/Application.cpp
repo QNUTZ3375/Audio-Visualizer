@@ -615,13 +615,6 @@ int main(){
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
         glm::vec3 translation(0.0f, 0.0f, 0);
 
-        std::string home_dir;
-        #ifdef _WIN32
-        home_dir = std::getenv("USERPROFILE");
-        #else
-        home_dir = std::getenv("HOME");
-        #endif
-
         //file_example_WAV_1MG
         //Moon_River_Audio_File
         if(pickFile() == false){
