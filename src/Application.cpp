@@ -62,9 +62,12 @@ typedef enum{
 static DeviceStatus audioDeviceStatus = INACTIVE;
 static bool toggleFileSelector = false;
 static bool resetGraphs = false;
+static bool changeTheme = false;
+static bool useSelectedTheme = false;
 static std::string filepath;
 static std::string filename;
 static std::map<ColorThemes::ThemeType, ColorThemes::Theme> themeTable;
+static ColorThemes::ThemeType currentThemeType;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
@@ -106,6 +109,15 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         return;
     }
 
+    if(key == GLFW_KEY_TAB){
+        if(useSelectedTheme == false){
+            currentThemeType = (ColorThemes::ThemeType) ((currentThemeType + 1) % 
+                (ColorThemes::ThemeType::NeonDesRainbow + 1));
+        }
+        changeTheme = true;
+        useSelectedTheme = false;
+    }
+
     #ifdef __APPLE__
         // macOS: Cmd+O
         bool cmdPressed = (mods & GLFW_MOD_SUPER) != 0;  // GLFW_MOD_SUPER is Cmd on macOS
@@ -141,10 +153,10 @@ void generateCustomBins(float* freqTable){
     freqTable[NUM_GRAPH_SAMPLES] = MAX_FREQ;
 }
 
-void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme& theme){
+void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme* theme){
     for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
-        AuxComputations::RGBAColor color = theme.generateColorSecondary();
-        theme.updateSecondaryIterator();
+        AuxComputations::RGBAColor color = theme->generateColorSecondary();
+        theme->updateSecondaryIterator();
         graphArr.push_back(SampleLine(i, WINDOW_MARGIN + i*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
                                         4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*i)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, color.a));
@@ -153,10 +165,10 @@ void generateGraph(std::vector<SampleLine>& graphArr, float* positions, unsigned
     }
 }
 
-void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme& theme){
+void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsigned int* indices, double* funcTable, ColorThemes::Theme* theme){
     for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
-        AuxComputations::RGBAColor color = theme.generateColorPrimary();
-        theme.updatePrimaryIterator();
+        AuxComputations::RGBAColor color = theme->generateColorPrimary();
+        theme->updatePrimaryIterator();
         freqArr.push_back(SampleLine(i, WINDOW_MARGIN + i*(SAMPLE_WIDTH + 2*SAMPLE_MARGIN), WINDOW_HEIGHT/2, 
                                         4 + MAX_AMPLITUDE_HEIGHT * funcTable[(int)(SCALING_FACTOR*i)%360], SAMPLE_WIDTH,
                                         color.r, color.g, color.b, color.a));
@@ -165,7 +177,7 @@ void generateFreqGraph(std::vector<SampleLine>& freqArr, float* positions, unsig
     }
 }
 
-void shiftGraphLeft(std::vector<SampleLine>& graphArr, ColorThemes::Theme& theme, float* positions, unsigned int* indices, float leftSample, float rightSample){
+void shiftGraphLeft(std::vector<SampleLine>& graphArr, ColorThemes::Theme* theme, float* positions, unsigned int* indices, float leftSample, float rightSample){
     //update all graph bars and shift left
     for(int i = 0; i < NUM_GRAPH_SAMPLES - 1; i++){
         const float* newColors = graphArr[i+1].getColors();
@@ -177,20 +189,20 @@ void shiftGraphLeft(std::vector<SampleLine>& graphArr, ColorThemes::Theme& theme
     }
 
     //update last element
-    AuxComputations::RGBAColor color = theme.generateColorSecondary();
+    AuxComputations::RGBAColor color = theme->generateColorSecondary();
     graphArr.back().changeColor(color.r, color.g, color.b, color.a);
     graphArr.back().changeYPos(WINDOW_HEIGHT/2 - (2 + MAX_AMPLITUDE_HEIGHT * rightSample));
     graphArr.back().changeHeight(2 + MAX_AMPLITUDE_HEIGHT * rightSample + 2 + MAX_AMPLITUDE_HEIGHT * leftSample);
 
     //increment iterator after creating sample
-    theme.updateSecondaryIterator();
+    theme->updateSecondaryIterator();
     //update position array
     for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
         graphArr.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
     }
 }
 
-void updateFreqValues(std::vector<SampleLine>& freqGraphArr, ColorThemes::Theme& theme, float* positions, unsigned int* indices, fftw_complex* leftSamples, fftw_complex* rightSamples, float* freqSeparationTable){
+void updateFreqValues(std::vector<SampleLine>& freqGraphArr, ColorThemes::Theme* theme, float* positions, unsigned int* indices, fftw_complex* leftSamples, fftw_complex* rightSamples, float* freqSeparationTable){
     for(int visBin = 0; visBin < NUM_GRAPH_SAMPLES; visBin++){
         float startFreq = freqSeparationTable[visBin];
         float endFreq = freqSeparationTable[visBin+1];
@@ -254,6 +266,19 @@ void updateFreqValues(std::vector<SampleLine>& freqGraphArr, ColorThemes::Theme&
     //update position array
     for(int i = 0; i < freqGraphArr.size(); i++){
         freqGraphArr.at(i).fillVertices(positions, NUM_TOTAL_VERTEX_POINTS*i);
+    }
+}
+
+void changeGraphThemes(std::vector<SampleLine>& ampGraphArr, std::vector<SampleLine>& freqGraphArr, float* ampPositions, float* freqPositions, ColorThemes::Theme* theme){
+    for(int i = 0; i < NUM_GRAPH_SAMPLES; i++){
+        AuxComputations::RGBAColor color = theme->generateColorPrimary();
+        freqGraphArr[i].changeColor(color.r, color.g, color.b, color.a);
+        freqGraphArr[i].fillVertices(freqPositions, NUM_TOTAL_VERTEX_POINTS*i);
+        color = theme->generateColorSecondary();
+        ampGraphArr[i].changeColor(color.r, color.g, color.b, color.a);
+        ampGraphArr[i].fillVertices(ampPositions, NUM_TOTAL_VERTEX_POINTS*i);
+        theme->updatePrimaryIterator();
+        theme->updateSecondaryIterator();
     }
 }
 
@@ -336,10 +361,11 @@ int main(){
     GLCall(glEnable(GL_BLEND));
 
     ColorThemes::InitializeThemes(themeTable, (SCALING_FACTOR/(NUM_HALVES/2)));
-    ColorThemes::Theme& currentTheme = themeTable.at(ColorThemes::ThemeType::YellowGrayScale);
-    AuxComputations::RGBAColor bgColorTheme = currentTheme.getBG();
+    currentThemeType = ColorThemes::ThemeType::TealWarm;
+    ColorThemes::Theme* currentTheme = &themeTable.at(currentThemeType);
+    AuxComputations::RGBAColor bgColorTheme = currentTheme->getBG();
     // AuxComputations::RGBAColor txColorTheme = currentTheme.getText();
-    AuxComputations::RGBAColor btColorTheme = currentTheme.getButton();
+    AuxComputations::RGBAColor btColorTheme = currentTheme->getButton();
     // AuxComputations::RGBAColor pbColorTheme = currentTheme.getPlayButton();
 
     double sinTable[360] = {};
@@ -609,8 +635,6 @@ int main(){
             return 0;
         }
 
-        std::cout << filepath << std::endl;
-
         ma_device device;
         ma_decoder decoder;
 
@@ -631,12 +655,6 @@ int main(){
         bool canSelectFile = true;
         while(!glfwWindowShouldClose(window)){
             renderer.Clear(bgColorTheme.r, bgColorTheme.g, bgColorTheme.b, bgColorTheme.a);
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::SetNextWindowPos(ImVec2(dbXPos + DECIBEL_METER_MAX_LENGTH + 50, 
-                WINDOW_HEIGHT - dbYPos - 80), ImGuiCond_Once);
-            ImGui::SetNextWindowSize(ImVec2(WINDOW_WIDTH/2 + 20, 100), ImGuiCond_Once);
             {
                 if(audioDeviceStatus == PLAYING && !(*audioBuffer.ringBuffer).isEmpty()){
                     if((*audioBuffer.ringBuffer).getSize() >= 2*samplesPerDrawCall){
@@ -749,9 +767,9 @@ int main(){
                 if(resetGraphs == true){
                     //reset all graphs
                     ampGraph.clear();
-                    currentTheme.resetSecondaryIterator();
+                    currentTheme->resetSecondaryIterator();
                     freqGraph.clear();
-                    currentTheme.resetPrimaryIterator();
+                    currentTheme->resetPrimaryIterator();
                     generateGraph(ampGraph, ampGraphObj.mappedPositions, 
                         ampGraphObj.mappedIndices, funcTable, currentTheme);
                     generateFreqGraph(freqGraph, freqGraphObj.mappedPositions, 
@@ -773,16 +791,61 @@ int main(){
                     audioDeviceStatus = PAUSED;
                     resetGraphs = false;
                 }
+                if(changeTheme == true){
+                    currentTheme = &themeTable.at(currentThemeType);
+                    currentTheme->resetPrimaryIterator();
+                    currentTheme->resetSecondaryIterator();
+                    bgColorTheme = currentTheme->getBG();
+                    btColorTheme = currentTheme->getButton();
+                    borderInterior.changeColor(btColorTheme.r, btColorTheme.g, btColorTheme.b, btColorTheme.a);
+                    borderInterior.fillVertices(borderButtonObj.mappedPositions, NUM_TOTAL_VERTEX_POINTS*(borderIterator - 2));
+                    if(audioDeviceStatus == PLAYING){
+                        borderFileInterior.changeColor(0.7f, 0.7f, 0.7f, 1.0f);
+                    }
+                    else{
+                        borderFileInterior.changeColor(btColorTheme.r, btColorTheme.g, btColorTheme.b, btColorTheme.a);
+                    }
+                    borderFileInterior.fillVertices(borderButtonObj.mappedPositions, NUM_TOTAL_VERTEX_POINTS*(borderIterator - 1));
+                    changeGraphThemes(ampGraph, freqGraph, ampGraphObj.mappedPositions, freqGraphObj.mappedPositions, currentTheme);
+                    changeTheme = false;
+                }
             }
 
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
             {
+                ImGui::SetNextWindowPos(ImVec2(dbXPos + DECIBEL_METER_MAX_LENGTH + 50, 
+                    WINDOW_HEIGHT - dbYPos - 80), ImGuiCond_Once);
+                ImGui::SetNextWindowSize(ImVec2(WINDOW_WIDTH/2 + 20, 100), ImGuiCond_Once);
                 ImGui::Begin("Information");
                 ImGui::TextWrapped("Now Playing: %s", filename.c_str());
 
                 // ImGui::SliderFloat3("Translation", &translation.x, -WINDOW_WIDTH, WINDOW_WIDTH);
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 
                     1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+                ImGui::End();
 
+                ImGui::SetNextWindowPos(ImVec2(2*WINDOW_MARGIN + border_icon_size, WINDOW_MARGIN), ImGuiCond_Once);
+                ImGui::SetNextWindowSize(ImVec2(WINDOW_WIDTH - 4*WINDOW_MARGIN - 2*border_icon_size, 100), ImGuiCond_Once);
+                float spacing = 10.0f;
+                float buttonHeight = 30.0f;
+                std::vector<std::string> themeTexts = {"Default", "Light Rainbow", "Teal Warm", "Purple Blue", "Yellow Grayscale", "Neon Rainbow"};
+
+                ImGui::Begin("Theme Selector");
+                for (int i = 0; i < themeTexts.size(); ++i){
+                    float buttonWidth = 10.0f * themeTexts[i].size();
+                    // Check available width to wrap
+                    if (buttonWidth >= ImGui::GetContentRegionAvail().x) ImGui::NewLine();
+
+                    if(ImGui::Button(themeTexts[i].c_str(), ImVec2(buttonWidth, buttonHeight))){
+                        useSelectedTheme = true;
+                        currentThemeType = static_cast<ColorThemes::ThemeType>(i);
+                        key_callback(window, GLFW_KEY_TAB, 0, GLFW_PRESS, 0);
+                    }
+                    if(i < themeTexts.size() - 1) ImGui::SameLine(0.0f, spacing);
+                }
                 ImGui::End();
             }
             ImGui::Render();
@@ -867,4 +930,7 @@ Thursday 29 May 2025:
     - Added a text box to display the filepath of the track currently being played
 Saturday 31 May 2025:
     - Added color theme options
+Sunday 1 June 2025:
+    - Added menu to toggle theme options
+
 */
