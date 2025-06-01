@@ -6,6 +6,7 @@ A cross-platform audio visualizer that reacts to music in real-time using C++, O
 
 ## Features:
 - Real-time audio visualization
+- Amplitude and Frequency visualization
 - Supports .wav, .mp3, .flac, and .ogg
 - Cross-platform (Windows/Mac/Linux)
 - Simple and customizable UI
