@@ -20,11 +20,11 @@ namespace ColorThemes{
         AuxComputations::RGBAColor textColor;
         AuxComputations::RGBAColor buttonColor;
         AuxComputations::RGBAColor playButtonColor;
+        int primaryIterator;
         int secondaryIterator;
         bool flipPrimaryDirection;
         bool flipSecondaryDirection;
         public:
-            int primaryIterator;
             std::function<AuxComputations::RGBAColor()> generateColorPrimary;
             std::function<AuxComputations::RGBAColor()> generateColorSecondary;
 
@@ -52,4 +52,3 @@ namespace ColorThemes{
 
     void ApplyThemeToImGuiWindow(const ColorThemes::Theme& t);
 }
-

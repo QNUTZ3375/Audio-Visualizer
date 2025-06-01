@@ -17,12 +17,12 @@ void ColorThemes::Theme::SetPrimaryColorFunction(ColorThemes::ThemeType type, fl
     switch(type){
         case LightRainbow:
             generateColorPrimary = [](){
-                return AuxComputations::RGBAColor {0.8f, 0.8f, 0.8f, 1.0f};
+                return AuxComputations::RGBAColor {0.85f, 0.85f, 0.85f, 1.0f};
             };
             break;
         case TealWarm:
             generateColorPrimary = [](){
-                return AuxComputations::RGBAColor {0.0f, 0.5f, 0.5f, 1.0f};
+                return AuxComputations::RGBAColor {0.0f, 0.5f, 0.65f, 1.0f};
             };
             break;
         case PurpleBlue:
@@ -150,7 +150,7 @@ void ColorThemes::InitializeThemes(std::map<ColorThemes::ThemeType, ColorThemes:
     defaultTheme.SetSecondaryColorFunction(ColorThemes::ThemeType::Default, opt_args);
 
     //initialize light rainbow theme
-    AuxComputations::RGBAColor bg_lrnb = {0.4f, 0.6f, 0.6f, 1.0f};
+    AuxComputations::RGBAColor bg_lrnb = {0.212f, 0.27f, 0.31f, 1.0f};
     AuxComputations::RGBAColor tx_lrnb = {1.0f, 1.0f, 1.0f, 1.0f};
     AuxComputations::RGBAColor bt_lrnb = {0.88f, 0.76f, 0.64f, 1.0f};
     AuxComputations::RGBAColor pb_lrnb = {0.1f, 0.1f, 0.1f, 1.0f};
