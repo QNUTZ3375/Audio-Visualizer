@@ -1,6 +1,6 @@
 # Audio Visualizer
 
-A cross-platform audio visualizer that reacts to music in real-time using C++, portable-file-dialogs, ImGui, miniaudio, and more.
+A cross-platform audio visualizer that reacts to music in real-time using C++, OpenGL, ImGui, miniaudio, and more.
 
 ![Screenshot 2025-06-01 at 1 47 53 PM](https://github.com/user-attachments/assets/5d1de309-db5a-4e33-8cde-f4a65a0e6f0b)
 
