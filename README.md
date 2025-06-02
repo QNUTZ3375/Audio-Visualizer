@@ -13,13 +13,15 @@ A cross-platform audio visualizer that reacts to music in real-time using C++, O
 
 ## Dependencies:
 - C++11
-- FFTW (Please make sure FFTW is already installed in your system before launching the application)
+- FFTW (Manually install according to the [FFTW website](https://www.fftw.org/fftw2_doc/fftw_6.html))
 - portable-file-dialogs
 - ImGui
 - miniaudio
 - OpenGL version 3.3 Core
 - GLFW 3.4
 - GLAD
+
+
 
 ## Language Limitations
 This app does not support Unicode or non-ASCII characters in its UI or file paths. All displayed text and file names must be composed of English (ASCII) characters. Internationalized or localized content is not currently supported.
