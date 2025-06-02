@@ -18,6 +18,22 @@ CPP_SRCS    := $(filter-out $(SRC_DIR)/$(OUT_FILE).cpp, $(CPP_SRCS))
 OBJS        = $(C_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o) \
               $(CPP_SRCS:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Linux)
+    FFTW_LIBS := -lfftw3 -lm
+endif
+ifeq ($(UNAME_S),Darwin) # macOS
+    FFTW_LIBS := -lfftw3 -lm
+endif
+ifeq ($(OS),Windows_NT)
+    FFTW_LIBS := -lfftw3-3 -lm
+endif
+
+# If FFTW is installed in a non-standard path, set it here:
+# FFTW_INC := -I/path/to/fftw/include
+# FFTW_LIB_DIR := -L/path/to/fftw/lib
+
 run: all
 	clear
 	leaks -quiet -list --atExit -- ./$(OUT_FILE)
@@ -29,7 +45,7 @@ clean: $(OUT_FILE)
 
 # Link the final executable
 compile: $(OBJS)
-	$(CXX) $(SRC_DIR)/$(OUT_FILE).cpp $(VENDOR_FILES) $(CXXFLAGS) $(LDFLAGS) -o $(TARGET) $^
+	$(CXX) $(SRC_DIR)/$(OUT_FILE).cpp $(VENDOR_FILES) $(CXXFLAGS) $(LDFLAGS) $(FFTW_INC) -o $(TARGET) $(FFTW_LIB_DIR) $(FFTW_LIBS) $^
 
 # Compile C source files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
