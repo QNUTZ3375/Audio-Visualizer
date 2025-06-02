@@ -2,7 +2,7 @@
 
 CXX = g++ -std=c++11
 CXXFLAGS= -fdiagnostics-color=always -g -Wall -Iinclude -Wno-deprecated
-LDFLAGS = library/libglfw.3.4.dylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework CoreFoundation -Llibrary -ldl -lpthread -lm -lfftw3
+LDFLAGS = library/libglfw.3.4.dylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework CoreFoundation -Llibrary -ldl -lpthread
 
 SRC_DIR     = src
 BUILD_DIR   = binaries
@@ -41,6 +41,7 @@ run: all
 all: compile
 
 clean: $(OUT_FILE)
+	rm -r binaries
 	rm $(OUT_FILE)
 
 # Link the final executable
