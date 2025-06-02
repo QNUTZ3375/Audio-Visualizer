@@ -13,7 +13,7 @@ A cross-platform audio visualizer that reacts to music in real-time using C++, O
 
 ## Dependencies:
 - C++11
-- FFTW
+- FFTW (Please make sure FFTW is already installed in your system before launching the application)
 - portable-file-dialogs
 - ImGui
 - miniaudio
